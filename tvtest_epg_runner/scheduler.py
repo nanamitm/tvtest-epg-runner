@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from .capture import CaptureRequest, CaptureResult, CaptureRunner
 from .edcb import EdcbClient, EdcbUnavailable, free_until
+from .notify import AddonNotifier
 from .util import format_duration
 
 logger = logging.getLogger(__name__)
@@ -30,17 +31,10 @@ def next_run_after(config, moment):
 class Scheduler:
     """Runs capture rounds on a schedule, and on demand from the tray menu."""
 
-    def __init__(self, config, on_change=None, notifier=None):
-        self.config = config
+    def __init__(self, config, on_change=None):
         self.on_change = on_change or (lambda: None)
-        self.notifier = notifier
-        self.runner = CaptureRunner(poll=config.edcb.poll, state_path=config.state_file)
-        self.edcb = EdcbClient(
-            config.edcb.url,
-            timeout=config.edcb.timeout,
-            default_start_margin=config.edcb.default_start_margin,
-            default_end_margin=config.edcb.default_end_margin,
-        )
+        self.runner = CaptureRunner()
+        self._apply(config)
 
         self.state = "起動中"
         self.busy = False
@@ -55,6 +49,26 @@ class Scheduler:
         self._adoptable = None
         self._lock = threading.Lock()
         self._thread = None
+
+    def _apply(self, config):
+        self.config = config
+        self.runner.poll = config.edcb.poll
+        self.runner.state_path = config.state_file
+        self.edcb = EdcbClient(
+            config.edcb.url,
+            timeout=config.edcb.timeout,
+            default_start_margin=config.edcb.default_start_margin,
+            default_end_margin=config.edcb.default_end_margin,
+        )
+        self.notifier = AddonNotifier(config.addon) if config.addon.url else None
+
+    def reconfigure(self, config):
+        """Adopt settings saved from the dialog without restarting."""
+        self._apply(config)
+        self.next_run = next_run_after(config, datetime.now())
+        logger.info("設定を読み込み直しました。(次回 %s)", f"{self.next_run:%m/%d %H:%M}")
+        self._wake.set()
+        self.on_change()
 
     # -- control ---------------------------------------------------------
 

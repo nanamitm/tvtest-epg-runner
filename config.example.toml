@@ -1,5 +1,6 @@
 # TVTest EPG Runner の設定
 # %APPDATA%\TVTestEpgRunner\config.toml にコピーして書き換えてください。
+# トレイの「設定…」から編集した場合も、この形式で書き戻されます。
 
 [tvtest]
 # 番組表取得専用の TVTest。視聴用とは別のフォルダを使ってください。

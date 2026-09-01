@@ -4,7 +4,8 @@ Keeps the [TVTest EPG Sync](../home-assistant-addons/tvtest_epg_sync) add-on fed
 with fresh program data: it runs TVTest's command line EPG capture on a
 schedule, works around EDCB's recordings, and reports what happened.
 
-It lives in the tray, so a round can also be started or stopped by hand.
+It lives in the tray (Qt 6 / PySide6), so a round can also be started or
+stopped by hand, and everything it does is configured from a settings dialog.
 
 ## What it does
 
@@ -34,7 +35,7 @@ Requires a TVTest build with `/epgcapturetimeout` and the cancel event, i.e.
 ## Install
 
 ```
-pip install -r requirements.txt
+pip install -r requirements.txt   # PySide6 と requests
 copy config.example.toml %APPDATA%\TVTestEpgRunner\config.toml
 notepad %APPDATA%\TVTestEpgRunner\config.toml
 ```
@@ -59,8 +60,22 @@ python -m tvtest_epg_runner --once BonDriver_dantto4k.dll
 skipped, 3 when a capture ended incomplete, and 1 on a configuration error.
 
 The tray menu offers the next run time, `今すぐ取得`, a per-driver submenu,
-`取得を中止`, the last round's results, and shortcuts to the log and the
-configuration file.
+`取得を中止`, the last round's results, `設定…` and the log. Double clicking the
+icon opens the settings too.
+
+## Settings
+
+`設定…` edits everything the configuration file holds, in five tabs: 全般
+(TVTest, extra arguments, logging), チューナー (the drivers to visit, in order,
+picked from the `BonDriver_*.dll` files next to TVTest), スケジュール (daily
+times or an interval), EDCB and 通知. The last two each carry a **接続を確認**
+button that reports what the runner would see: the free window per tuner for
+EDCB, and whether the add-on is new enough to accept capture reports.
+
+Saving writes the file and loads it straight back through the same validation
+the runner uses at startup, so a bad edit is reported in the dialog instead of
+landing on disk. The settings take effect immediately — no restart, and a
+capture in progress is left alone.
 
 ## Configuration
 

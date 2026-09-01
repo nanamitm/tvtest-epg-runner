@@ -11,7 +11,6 @@ from datetime import datetime
 
 from . import config as config_module
 from . import winevent
-from .notify import AddonNotifier
 from .scheduler import Scheduler, next_run_after
 from .util import format_duration
 
@@ -86,8 +85,7 @@ def main(argv=None):
 
     setup_logging(config, console=args.once is not None or args.check)
 
-    notifier = AddonNotifier(config.addon)
-    scheduler = Scheduler(config, notifier=notifier if notifier.enabled else None)
+    scheduler = Scheduler(config)
 
     if args.check:
         return check(scheduler, config)
@@ -100,12 +98,10 @@ def main(argv=None):
         print("TVTest EPG Runner は既に起動しています。", file=sys.stderr)
         return 1
 
-    from .tray import TrayApplication
+    from .ui.app import TrayApplication
 
     logger.info("TVTest EPG Runner を開始します。(設定 %s)", config.path)
-    scheduler.start()
-    TrayApplication(scheduler, config).run()
-    return 0
+    return TrayApplication(scheduler, config).run()
 
 
 def check(scheduler, config):

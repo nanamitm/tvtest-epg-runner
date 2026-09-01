@@ -37,9 +37,10 @@ class EdcbConfig:
 
 @dataclass
 class PriorityConfig:
-    enabled: bool = True     # 最終取得が古い順に選ぶ
-    use_addon: bool = True   # アドオンの最終更新も参照する
-    reserve: int = 120       # 制限時間から差し引く余裕
+    enabled: bool = True       # 最終取得が古い順に選ぶ
+    use_addon: bool = True     # アドオンの最終更新も参照する
+    reserve: int = 120         # 制限時間から差し引く余裕
+    min_age: int = 6 * 3600    # これより新しいチャンネルは取り直さない
 
 
 @dataclass
@@ -140,6 +141,7 @@ def load(path=None):
         enabled=bool(priority_data.get("enabled", True)),
         use_addon=bool(priority_data.get("use_addon", True)),
         reserve=parse_duration(priority_data.get("reserve"), PriorityConfig.reserve),
+        min_age=parse_duration(priority_data.get("min_age"), PriorityConfig.min_age),
     )
 
     addon_data = data.get("addon", {})
@@ -208,6 +210,9 @@ enabled = {priority_enabled}
 use_addon = {priority_use_addon}
 # 1回の取得に詰め込みすぎないよう、制限時間から差し引く余裕。
 reserve = {priority_reserve}
+# これより新しいチャンネルは取り直しません。空き枠が余っても取りに行かないので、
+# 短い間隔で実行しても同じチャンネルを繰り返し取得することがありません。
+min_age = {priority_min_age}
 
 [edcb]
 # EpgTimerSrv の HTTP サーバ (EnableHttpSrv=1 / HttpPort)。
@@ -284,6 +289,7 @@ def values_from(config):
             "enabled": config.priority.enabled,
             "use_addon": config.priority.use_addon,
             "reserve": duration_text(config.priority.reserve),
+            "min_age": duration_text(config.priority.min_age),
         },
         "edcb": {
             "url": config.edcb.url,
@@ -344,6 +350,7 @@ def render(values):
         priority_enabled=_bool(priority["enabled"]),
         priority_use_addon=_bool(priority["use_addon"]),
         priority_reserve=_string(priority["reserve"]),
+        priority_min_age=_string(priority["min_age"]),
         exe=_string(values["exe"]),
         extra_args="[" + ", ".join(_string(a) for a in values["extra_args"]) + "]",
         drivers=drivers,

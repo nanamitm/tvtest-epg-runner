@@ -266,6 +266,14 @@ class Scheduler:
             )
 
         buckets = self._share_out(driver, parallel, timeout, freshness)
+        if self.config.priority.enabled and not any(buckets):
+            reason = "取得が新しいチャンネルばかりのため対象がありません"
+            logger.info("%s をスキップします: %s", driver.name, reason)
+            return [], CaptureResult(
+                driver=driver.name, started=started, finished=datetime.now(),
+                exit_code=None, timeout=0, skipped=reason,
+            )
+
         jobs = []
         for index, groups in enumerate(buckets, start=1):
             if not groups and self.config.priority.enabled:
@@ -291,6 +299,22 @@ class Scheduler:
             return [[] for _ in range(parallel)]
 
         ordered = self.history.order(driver.name, groups, freshness)
+
+        # 取ったばかりのものを取り直しても得るものがないので、枠が余っても外す。
+        # ここで見るのは自分が取得した時刻だけ。アドオンの更新時刻は「誰かが送った」
+        # 時刻でしかなく、取得の代わりにはならないので、並び順にだけ効かせる。
+        if self.config.priority.min_age > 0:
+            floor = datetime.now() - timedelta(seconds=self.config.priority.min_age)
+            fresh = len(ordered)
+            ordered = [
+                group for group in ordered
+                if self.history.attempted_at(driver.name, group) <= floor
+            ]
+            fresh -= len(ordered)
+            if fresh:
+                logger.debug(
+                    "%s: %d チャンネルは取得したばかりなので今回は外します。",
+                    driver.name, fresh)
 
         # 1本あたりの持ち時間から、今回いくつ回せるかを見積もる
         budget = max(0, timeout - self.config.priority.reserve) * parallel

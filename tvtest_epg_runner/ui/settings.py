@@ -137,6 +137,8 @@ class SettingsDialog(QDialog):
         form.addRow(self.priority_use_addon)
         self.priority_reserve = QLineEdit()
         form.addRow("制限時間から差し引く余裕", self.priority_reserve)
+        self.priority_min_age = QLineEdit()
+        form.addRow("取り直さない期間", self.priority_min_age)
         form.addRow("", QLabel(
             "「同時」の本数は EDCB の空きチューナー数まで自動で下がります。\n"
             "「チャンネル」は対象の範囲で、空にすると全チャンネルが対象です。"))
@@ -144,6 +146,7 @@ class SettingsDialog(QDialog):
 
         self.priority_enabled.toggled.connect(self.priority_use_addon.setEnabled)
         self.priority_enabled.toggled.connect(self.priority_reserve.setEnabled)
+        self.priority_enabled.toggled.connect(self.priority_min_age.setEnabled)
         return page
 
     def _driver_names(self):
@@ -436,8 +439,10 @@ class SettingsDialog(QDialog):
         self.priority_enabled.setChecked(priority["enabled"])
         self.priority_use_addon.setChecked(priority["use_addon"])
         self.priority_reserve.setText(priority["reserve"])
+        self.priority_min_age.setText(priority["min_age"])
         self.priority_use_addon.setEnabled(priority["enabled"])
         self.priority_reserve.setEnabled(priority["enabled"])
+        self.priority_min_age.setEnabled(priority["enabled"])
 
         self.times_list.addItems(values["times"])
         self.every_edit.setText(values["every"])
@@ -481,6 +486,7 @@ class SettingsDialog(QDialog):
                 "enabled": self.priority_enabled.isChecked(),
                 "use_addon": self.priority_use_addon.isChecked(),
                 "reserve": self.priority_reserve.text().strip(),
+                "min_age": self.priority_min_age.text().strip(),
             },
             "edcb": {
                 "url": self.edcb_url.text().strip(),

@@ -43,6 +43,7 @@ class Scheduler:
         )
 
         self.state = "起動中"
+        self.busy = False
         self.current_driver = ""
         self.last_round = []
         self.last_finished = None
@@ -81,6 +82,15 @@ class Scheduler:
 
     @property
     def running(self):
+        """True while a round is in progress.
+
+        This covers the whole round, not just the time TVTest is up: a round
+        also spends time asking EDCB, and between two drivers.
+        """
+        return self.busy
+
+    @property
+    def capturing(self):
         return self.runner.running
 
     # -- main loop -------------------------------------------------------
@@ -118,13 +128,17 @@ class Scheduler:
             "定期実行" if scheduled else "手動実行", len(drivers),
         )
         results = []
-        for driver in drivers:
-            if self._quit.is_set():
-                break
-            self.current_driver = driver.name
-            self._set_state(f"取得中: {driver.name}")
-            results.append(self.run_driver(driver))
-            self.current_driver = ""
+        self.busy = True
+        try:
+            for driver in drivers:
+                if self._quit.is_set():
+                    break
+                self.current_driver = driver.name
+                self._set_state(f"取得中: {driver.name}")
+                results.append(self.run_driver(driver))
+                self.current_driver = ""
+        finally:
+            self.busy = False
 
         self.last_round = results
         self.last_finished = datetime.now()

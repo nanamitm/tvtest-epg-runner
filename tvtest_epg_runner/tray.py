@@ -85,8 +85,8 @@ class TrayApplication:
 
     def _status_text(self, _item=None):
         scheduler = self.scheduler
-        if scheduler.running and scheduler.current_driver:
-            return f"取得中: {scheduler.current_driver}"
+        if scheduler.running:
+            return scheduler.state
         if scheduler.next_run is not None:
             return f"待機中 (次回 {scheduler.next_run:%m/%d %H:%M})"
         return scheduler.state

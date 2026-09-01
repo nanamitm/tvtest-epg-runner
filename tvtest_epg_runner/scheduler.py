@@ -34,7 +34,7 @@ class Scheduler:
         self.config = config
         self.on_change = on_change or (lambda: None)
         self.notifier = notifier
-        self.runner = CaptureRunner(poll=config.edcb.poll)
+        self.runner = CaptureRunner(poll=config.edcb.poll, state_path=config.state_file)
         self.edcb = EdcbClient(
             config.edcb.url,
             timeout=config.edcb.timeout,
@@ -52,6 +52,7 @@ class Scheduler:
         self._wake = threading.Event()
         self._quit = threading.Event()
         self._requests = []
+        self._adoptable = None
         self._lock = threading.Lock()
         self._thread = None
 
@@ -59,7 +60,8 @@ class Scheduler:
 
     def start(self):
         self.next_run = next_run_after(self.config, datetime.now())
-        if self.config.run_at_start:
+        self._adoptable = self.runner.find_adoptable()
+        if self.config.run_at_start and self._adoptable is None:
             self.request_round()
         self._thread = threading.Thread(target=self._loop, name="scheduler", daemon=True)
         self._thread.start()
@@ -97,6 +99,7 @@ class Scheduler:
 
     def _loop(self):
         self._set_state("待機中")
+        self.adopt_pending()
         while not self._quit.is_set():
             timeout = max(1.0, (self.next_run - datetime.now()).total_seconds())
             self._wake.wait(timeout=min(timeout, 60))
@@ -114,6 +117,35 @@ class Scheduler:
             if not self._quit.is_set() and datetime.now() >= self.next_run:
                 self.next_run = next_run_after(self.config, datetime.now())
                 self._run_round(None, scheduled=True)
+
+    def adopt_pending(self):
+        """Take over a capture an earlier runner left running, if any.
+
+        Killing the runner does not stop TVTest, so without this the capture
+        would hold its tuner until its own time limit, unwatched and with
+        nobody to report what it did.
+        """
+        adoptable = self._adoptable or self.runner.find_adoptable()
+        self._adoptable = None
+        if adoptable is None:
+            return None
+
+        driver = adoptable[1].driver
+        self.busy = True
+        self.current_driver = driver
+        self._set_state(f"取得中: {driver}")
+        try:
+            result = self.runner.adopt(
+                adoptable, watchdog=lambda elapsed: self._watchdog(driver, elapsed))
+        finally:
+            self.busy = False
+            self.current_driver = ""
+
+        self.last_round = [result]
+        self.last_finished = datetime.now()
+        self._set_state("待機中")
+        self.notify([result])
+        return result
 
     def _run_round(self, only, scheduled):
         drivers = self.config.enabled_drivers
@@ -175,11 +207,12 @@ class Scheduler:
             driver=driver.name, timeout=timeout,
             exe=self.config.exe, extra_args=self.config.extra_args,
         )
-        return self.runner.run(request, watchdog=lambda elapsed: self._watchdog(driver, elapsed))
+        return self.runner.run(
+            request, watchdog=lambda elapsed: self._watchdog(driver.name, elapsed))
 
     def _watchdog(self, driver, elapsed):
         """Abort the capture once EDCB needs the tuner back."""
-        window, blocker = self.free_window(driver.name, datetime.now())
+        window, blocker = self.free_window(driver, datetime.now())
         if window is None or window > 0:
             return None
         if blocker is not None:

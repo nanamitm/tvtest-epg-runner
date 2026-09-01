@@ -53,6 +53,7 @@ class Config:
     addon: AddonConfig = field(default_factory=AddonConfig)
     log_file: str = ""
     log_level: str = "INFO"
+    state_file: str = ""
     path: str = ""
 
     @property
@@ -144,6 +145,8 @@ def load(path=None):
         addon=addon,
         log_file=log_file,
         log_level=str(log_data.get("level", "INFO")).upper(),
+        state_file=os.path.join(
+            os.path.dirname(os.path.abspath(log_file)), "capture-state.json"),
         path=os.path.abspath(path),
     )
 

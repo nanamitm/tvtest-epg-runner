@@ -21,6 +21,11 @@ It lives in the tray, so a round can also be started or stopped by hand.
   range. TVTest then flushes the EPG it has already collected to the sync
   server before exiting, so an aborted round is not a wasted one.
 - Posts the result of every round to the add-on.
+- Picks a capture back up after being killed: while TVTest runs, the runner
+  notes it in `capture-state.json`, and on the next start it attaches to that
+  process again — same watchdog, same reporting — instead of leaving it to hold
+  a tuner unwatched. The note is only trusted when the pid is still alive and
+  still running the configured `TVTest.exe`.
 
 Requires a TVTest build with `/epgcapturetimeout` and the cancel event, i.e.
 [nanamitm/TVTest](https://github.com/nanamitm/TVTest) `develop` at

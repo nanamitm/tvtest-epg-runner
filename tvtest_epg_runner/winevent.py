@@ -111,3 +111,68 @@ def post_close(pid):
     if not found:
         return False
     return bool(_user32.PostMessageW(found[0], WM_CLOSE, 0, 0))
+
+
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+PROCESS_TERMINATE = 0x0001
+SYNCHRONIZE = 0x00100000
+STILL_ACTIVE = 259
+
+_kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+_kernel32.OpenProcess.restype = wintypes.HANDLE
+_kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+_kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+_kernel32.QueryFullProcessImageNameW.argtypes = (
+    wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD))
+_kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+_kernel32.TerminateProcess.argtypes = (wintypes.HANDLE, wintypes.UINT)
+_kernel32.TerminateProcess.restype = wintypes.BOOL
+
+
+class AttachedProcess:
+    """A process this runner did not start, watched like a ``Popen`` would be.
+
+    It carries just enough of the Popen interface for the capture monitor:
+    ``pid``, ``returncode``, ``poll()`` and ``kill()``.  Windows keeps the
+    exit code readable while a handle is open, so opening one up front means
+    the exit code survives even if the process ends the moment after.
+    """
+
+    def __init__(self, pid):
+        self.pid = pid
+        self.returncode = None
+        self._handle = _kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE,
+            False, pid)
+        if not self._handle:
+            raise LookupError(f"プロセス {pid} を開けません")
+
+    @property
+    def image_path(self):
+        size = wintypes.DWORD(32768)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        if not _kernel32.QueryFullProcessImageNameW(self._handle, 0, buffer, ctypes.byref(size)):
+            return ""
+        return buffer.value
+
+    def poll(self):
+        if self.returncode is not None:
+            return self.returncode
+        code = wintypes.DWORD()
+        if not _kernel32.GetExitCodeProcess(self._handle, ctypes.byref(code)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if code.value == STILL_ACTIVE:
+            return None
+        self.returncode = code.value
+        return self.returncode
+
+    def kill(self):
+        _kernel32.TerminateProcess(self._handle, 1)
+
+    def close(self):
+        if self._handle:
+            _kernel32.CloseHandle(self._handle)
+            self._handle = None
+
+    def __del__(self):
+        self.close()

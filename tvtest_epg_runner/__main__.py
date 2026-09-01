@@ -37,7 +37,8 @@ def setup_logging(config, console=True):
 
 
 def run_once(scheduler, drivers):
-    results = []
+    adopted = scheduler.adopt_pending()
+    results = [adopted] if adopted is not None else []
     targets = scheduler.config.enabled_drivers
     if drivers:
         wanted = set(drivers)

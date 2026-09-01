@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
@@ -45,6 +46,7 @@ class CaptureResult:
     cancel_reason: str = ""
     skipped: str = ""
     detail: str = ""
+    adopted: bool = False
 
     @property
     def elapsed(self):
@@ -61,6 +63,8 @@ class CaptureResult:
         if self.exit_code is None:
             return self.detail or "異常終了"
         base = EXIT_TEXT.get(self.exit_code, f"終了コード {self.exit_code}")
+        if self.adopted:
+            base += " / 引き継ぎ"
         if self.cancelled and self.cancel_reason:
             return f"{base} / {self.cancel_reason}"
         return base
@@ -76,6 +80,7 @@ class CaptureResult:
             "cancelled": self.cancelled,
             "cancel_reason": self.cancel_reason,
             "skipped": self.skipped,
+            "adopted": self.adopted,
             "result": self.text,
         }
 
@@ -95,8 +100,11 @@ class CaptureRunner:
     returns a reason string to abort the capture, or None to let it continue.
     """
 
-    def __init__(self, poll=30):
+    def __init__(self, poll=30, state_path=""):
         self.poll = poll
+        # Written while a capture runs, so a runner that was killed can pick
+        # the capture back up instead of leaving TVTest holding a tuner.
+        self.state_path = state_path
         self._process = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -130,7 +138,6 @@ class CaptureRunner:
         )
         logger.debug("起動: %s", " ".join(args))
 
-        self._stop.clear()
         try:
             process = subprocess.Popen(args, cwd=_directory_of(request.exe))
         except OSError as error:
@@ -142,6 +149,50 @@ class CaptureRunner:
                 detail=f"起動に失敗しました: {error}",
             )
 
+        self._write_state(request, process.pid, started)
+        return self._monitor(process, request, started, watchdog)
+
+    def find_adoptable(self):
+        """The capture an earlier runner left behind, if it is still running.
+
+        Returns ``(process, request, started)`` ready for :meth:`adopt`, or
+        None when there is nothing to pick up.
+        """
+        state = self._read_state()
+        if state is None:
+            return None
+
+        try:
+            process = winevent.AttachedProcess(int(state["pid"]))
+            request = CaptureRequest(
+                driver=str(state["driver"]),
+                timeout=int(state["timeout"]),
+                exe=str(state["exe"]),
+            )
+            started = datetime.fromisoformat(state["started"])
+        except (KeyError, TypeError, ValueError, LookupError):
+            self._clear_state()
+            return None
+
+        if process.poll() is not None or not _same_file(process.image_path, request.exe):
+            # The pid has been reused, or that capture is already over.
+            process.close()
+            self._clear_state()
+            return None
+
+        return process, request, started
+
+    def adopt(self, adoptable, watchdog=None):
+        process, request, started = adoptable
+        logger.info(
+            "前回の実行が残した %s の取得を引き継ぎます。(pid %s, %s 経過)",
+            request.driver, process.pid,
+            format_duration((datetime.now() - started).total_seconds()),
+        )
+        return self._monitor(process, request, started, watchdog, adopted=True)
+
+    def _monitor(self, process, request, started, watchdog=None, adopted=False):
+        self._stop.clear()
         with self._lock:
             self._process = process
 
@@ -169,18 +220,60 @@ class CaptureRunner:
         finally:
             with self._lock:
                 self._process = None
+            self._clear_state()
 
         finished = datetime.now()
         result = CaptureResult(
             driver=request.driver, started=started, finished=finished,
             exit_code=process.returncode, timeout=request.timeout,
-            cancelled=cancelled, cancel_reason=cancel_reason,
+            cancelled=cancelled, cancel_reason=cancel_reason, adopted=adopted,
         )
         logger.info(
             "%s の番組表取得が終了しました。(%s, %s)",
             request.driver, result.text, format_duration(result.elapsed),
         )
         return result
+
+    # -- handover state --------------------------------------------------
+
+    def _write_state(self, request, pid, started):
+        if not self.state_path:
+            return
+        data = {
+            "pid": pid,
+            "driver": request.driver,
+            "timeout": request.timeout,
+            "exe": request.exe,
+            "started": started.isoformat(timespec="seconds"),
+        }
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(self.state_path)), exist_ok=True)
+            with open(self.state_path, "w", encoding="utf-8") as file:
+                json.dump(data, file, ensure_ascii=False)
+        except OSError as error:
+            logger.warning("実行中の状態を保存できません: %s", error)
+
+    def _read_state(self):
+        if not self.state_path:
+            return None
+        try:
+            with open(self.state_path, "r", encoding="utf-8") as file:
+                return json.load(file)
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError) as error:
+            logger.warning("実行中の状態を読めません: %s", error)
+            return None
+
+    def _clear_state(self):
+        if not self.state_path:
+            return
+        try:
+            os.remove(self.state_path)
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            logger.warning("実行中の状態を削除できません: %s", error)
 
     def _abort(self, process, reason):
         """Stop the capture, escalating only as far as it has to."""
@@ -216,3 +309,9 @@ class CaptureRunner:
 
 def _directory_of(exe):
     return os.path.dirname(os.path.abspath(exe)) or None
+
+
+def _same_file(left, right):
+    if not left or not right:
+        return False
+    return os.path.normcase(os.path.abspath(left)) == os.path.normcase(os.path.abspath(right))

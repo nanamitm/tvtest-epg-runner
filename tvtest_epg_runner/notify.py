@@ -35,9 +35,9 @@ class AddonNotifier:
             "finished": datetime.now().astimezone().isoformat(timespec="seconds"),
             "captures": [result.as_dict() for result in results],
         }
-        headers = {}
+        headers = {"X-EPG-Source": self.name}
         if self.token:
-            headers["X-EPG-Sync-Token"] = self.token
+            headers["X-EPG-Token"] = self.token
 
         try:
             response = requests.post(

@@ -6,6 +6,7 @@ import re
 from datetime import timedelta
 
 _DURATION_RE = re.compile(r"(\d+)\s*([hms]?)", re.IGNORECASE)
+_DURATION_FULL_RE = re.compile(r"(?:\s*\d+\s*[hms]?\s*)+", re.IGNORECASE)
 
 
 def parse_duration(value, default=None):
@@ -21,6 +22,9 @@ def parse_duration(value, default=None):
     text = str(value).strip()
     if not text:
         return default
+
+    if not _DURATION_FULL_RE.fullmatch(text):
+        raise ValueError(f"時間の指定を解釈できません: {value!r}")
 
     total = 0
     matched = False

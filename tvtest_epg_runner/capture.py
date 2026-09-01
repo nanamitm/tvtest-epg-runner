@@ -97,6 +97,7 @@ class CaptureRequest:
     extra_args: list = field(default_factory=list)
     channels: str = ""          # /epgcapturech の指定 (空で現在の空間すべて)
     channel_count: int = 0
+    idle: int = 0
     report_path: str = ""
 
 
@@ -140,6 +141,8 @@ class CaptureRunner:
         ]
         if request.channels:
             args += ["/epgcapturech", request.channels]
+        if request.idle:
+            args += ["/epgcaptureidle", str(request.idle)]
         if request.report_path:
             # 前回の内容が混ざらないよう、書き出す前に消しておく
             try:

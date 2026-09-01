@@ -209,6 +209,7 @@ class Scheduler:
                 extra_args=self.config.extra_args,
                 channels=channel_module.to_spec(job.groups) if job.groups else "",
                 channel_count=len(job.groups),
+                idle=job.driver.idle,
                 report_path=self._report_path(job.driver.name, job.index),
             )
             if job.groups:

@@ -28,7 +28,7 @@ from ..util import format_duration, parse_duration
 
 logger = logging.getLogger(__name__)
 
-DRIVER_COLUMNS = ("ドライバ", "制限時間", "最小空き", "同時", "チャンネル", "有効")
+DRIVER_COLUMNS = ("ドライバ", "制限時間", "最小空き", "同時", "打ち切り", "チャンネル", "有効")
 
 
 class SettingsDialog(QDialog):
@@ -141,6 +141,7 @@ class SettingsDialog(QDialog):
         form.addRow("取り直さない期間", self.priority_min_age)
         form.addRow("", QLabel(
             "「同時」の本数は EDCB の空きチューナー数まで自動で下がります。\n"
+            "「打ち切り」は、番組表が増えなくなってから次へ移るまでの時間です。\n"
             "「チャンネル」は対象の範囲で、空にすると全チャンネルが対象です。"))
         layout.addWidget(box)
 
@@ -175,16 +176,18 @@ class SettingsDialog(QDialog):
         self.driver_table.setItem(row, 1, QTableWidgetItem(driver["timeout"]))
         self.driver_table.setItem(row, 2, QTableWidgetItem(driver["min_window"]))
         self.driver_table.setItem(row, 3, QTableWidgetItem(str(driver["instances"])))
-        self.driver_table.setItem(row, 4, QTableWidgetItem(driver["channels"]))
+        self.driver_table.setItem(row, 4, QTableWidgetItem(driver["idle"]))
+        self.driver_table.setItem(row, 5, QTableWidgetItem(driver["channels"]))
 
         enabled = QTableWidgetItem()
         enabled.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
         enabled.setCheckState(Qt.Checked if driver["enabled"] else Qt.Unchecked)
-        self.driver_table.setItem(row, 5, enabled)
+        self.driver_table.setItem(row, 6, enabled)
 
     def _add_driver(self):
         self._add_driver_row({"name": "", "timeout": "40m", "min_window": "15m",
-                              "instances": 1, "channels": "", "enabled": True})
+                              "instances": 1, "idle": "0s", "channels": "",
+                              "enabled": True})
         self.driver_table.selectRow(self.driver_table.rowCount() - 1)
 
     def _remove_driver(self):
@@ -214,13 +217,15 @@ class SettingsDialog(QDialog):
                 "timeout": self._cell(row, 1),
                 "min_window": self._cell(row, 2),
                 "instances": self._cell(row, 3) or "1",
-                "channels": self._cell(row, 4),
-                "enabled": self.driver_table.item(row, 5).checkState() == Qt.Checked,
+                "idle": self._cell(row, 4) or "0s",
+                "channels": self._cell(row, 5),
+                "enabled": self.driver_table.item(row, 6).checkState() == Qt.Checked,
             }
             if validate:
                 if not name:
                     raise ValueError(f"{row + 1} 行目のドライバ名が空です。")
-                for key, label in (("timeout", "制限時間"), ("min_window", "最小空き")):
+                for key, label in (("timeout", "制限時間"), ("min_window", "最小空き"),
+                                   ("idle", "打ち切り")):
                     try:
                         parse_duration(driver[key])
                     except ValueError as error:

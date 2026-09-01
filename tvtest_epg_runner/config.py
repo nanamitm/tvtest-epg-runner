@@ -22,6 +22,7 @@ class DriverConfig:
     enabled: bool = True
     instances: int = 1      # 同時に走らせる本数
     channels: str = ""      # 対象の範囲 (/epgcapturech と同じ書式、空で全部)
+    idle: int = 0           # 番組表が増えなくなってから次のチャンネルへ移るまで
 
 
 @dataclass
@@ -111,6 +112,7 @@ def load(path=None):
             enabled=bool(entry.get("enabled", True)),
             instances=max(1, int(entry.get("instances", 1))),
             channels=str(entry.get("channels", "")).strip(),
+            idle=parse_duration(entry.get("idle"), 0),
         ))
     if not drivers:
         raise ConfigError("[[driver]] を少なくとも1つ指定してください。")
@@ -249,6 +251,9 @@ min_window = {min_window}
 instances = {instances}
 # 対象にするチャンネル (/epgcapturech と同じ書式、空で全部)。
 channels = {channels}
+# 番組表が増えなくなってから次のチャンネルへ移るまでの時間。完了と判定できない
+# ストリーム(4K/8K など)で、チャンネルごとの上限まで待たずに済みます。0 で無効。
+idle = {idle}
 enabled = {enabled}
 """
 
@@ -278,6 +283,7 @@ def values_from(config):
                 "min_window": duration_text(driver.min_window),
                 "instances": driver.instances,
                 "channels": driver.channels,
+                "idle": duration_text(driver.idle) if driver.idle else "0s",
                 "enabled": driver.enabled,
             }
             for driver in config.drivers
@@ -325,6 +331,7 @@ def render(values):
             min_window=_string(driver["min_window"]),
             instances=int(driver["instances"]),
             channels=_string(driver["channels"]),
+            idle=_string(driver["idle"]),
             enabled=_bool(driver["enabled"]),
         ) + "\n"
         for driver in values["drivers"]

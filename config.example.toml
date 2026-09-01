@@ -1,0 +1,50 @@
+# TVTest EPG Runner の設定
+# %APPDATA%\TVTestEpgRunner\config.toml にコピーして書き換えてください。
+
+[tvtest]
+# 番組表取得専用の TVTest。視聴用とは別のフォルダを使ってください。
+exe = 'C:\Free Soft Ware\TVTest64bit EPG\TVTest.exe'
+# /epgcaptureexit と /epgcapturetimeout はランナーが付けるので不要です。
+extra_args = ["/log"]
+
+# 巡回するチューナーを順番に並べます。上から順に実行します。
+[[driver]]
+name = "BonDriver_dantto4k.dll"
+timeout = "40m"      # この時間を超えたら取得を打ち切る
+min_window = "15m"   # EDCB の予約までこれ未満しか空きがなければスキップ
+
+[[driver]]
+name = "BonDriver_PX-MLT.dll"
+timeout = "30m"
+min_window = "10m"
+
+[schedule]
+# 毎日この時刻に実行します。every = "6h" のように間隔指定もできます
+# (times と every はどちらか一方)。
+times = ["04:30", "16:30"]
+# 起動直後にも1回実行する場合は true。
+run_at_start = false
+
+[edcb]
+# EpgTimerSrv の HTTP サーバ (EnableHttpSrv=1 / HttpPort)。
+url = "http://127.0.0.1:5510"
+# 予約のこれだけ手前で取得をやめます。EDCB の NGEpgCapTime と同じ考え方です。
+guard = "10m"
+# 実行中に予約を確認する間隔。
+poll = "30s"
+# 予約に個別マージンがないときに使う既定値 (EpgTimerSrv.ini の StartMargin/EndMargin)。
+default_start_margin = "30s"
+default_end_margin = "30s"
+# true にすると、EDCB に問い合わせできないときは取得しません。
+required = true
+
+[addon]
+# Home Assistant の TVTest EPG Sync アドオン。空にすると通知しません。
+url = "http://192.168.10.66:8077"
+token = ""
+name = "epg-runner"
+
+[log]
+# 省略すると設定ファイルと同じフォルダの runner.log になります。
+#file = 'C:\Free Soft Ware\TVTest64bit EPG\runner.log'
+level = "INFO"

@@ -114,16 +114,17 @@ class EdcbClient:
         )
 
 
-def free_until(reservations, tuner_count, driver, since, guard=0, horizon=24 * 3600):
-    """How long ``driver`` stays free from ``since``, and what takes it next.
+def free_until(reservations, tuner_count, driver, since, guard=0, horizon=24 * 3600,
+               needed=1):
+    """How long ``driver`` keeps ``needed`` tuners free, and what takes them.
 
-    Returns ``(seconds, blocking_reservation)``.  The driver counts as free
-    while fewer than ``tuner_count`` of its instances are busy, so a driver
-    with ten tuners can lend one out during a single recording.  ``guard`` is
-    subtracted from the answer, the way EDCB's own NGEpgCapTime keeps its EPG
-    capture away from an upcoming recording.
+    Returns ``(seconds, blocking_reservation)``.  A driver with ten tuners can
+    lend one out during a single recording, so the answer is the moment fewer
+    than ``needed`` of its instances are free.  ``guard`` is subtracted from
+    it, the way EDCB's own NGEpgCapTime keeps its EPG capture away from an
+    upcoming recording.
     """
-    if tuner_count <= 0:
+    if tuner_count < needed:
         return 0, None
 
     limit = since + timedelta(seconds=horizon)
@@ -137,7 +138,7 @@ def free_until(reservations, tuner_count, driver, since, guard=0, horizon=24 * 3
     for candidate in upcoming:
         moment = max(candidate.start, since)
         busy = sum(1 for r in upcoming if r.start <= moment < r.end)
-        if busy >= tuner_count:
+        if busy > tuner_count - needed:
             seconds = int((candidate.start - since).total_seconds()) - guard
             return max(0, seconds), candidate
 

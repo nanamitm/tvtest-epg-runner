@@ -47,6 +47,8 @@ class CaptureResult:
     skipped: str = ""
     detail: str = ""
     adopted: bool = False
+    channel_count: int = 0
+    report: list = field(default_factory=list)
 
     @property
     def elapsed(self):
@@ -81,6 +83,8 @@ class CaptureResult:
             "cancel_reason": self.cancel_reason,
             "skipped": self.skipped,
             "adopted": self.adopted,
+            "channels": self.channel_count,
+            "captured": sum(1 for entry in self.report if entry["complete"]),
             "result": self.text,
         }
 
@@ -91,6 +95,9 @@ class CaptureRequest:
     timeout: int
     exe: str
     extra_args: list = field(default_factory=list)
+    channels: str = ""          # /epgcapturech の指定 (空で現在の空間すべて)
+    channel_count: int = 0
+    report_path: str = ""
 
 
 class CaptureRunner:
@@ -130,12 +137,30 @@ class CaptureRunner:
             "/d", request.driver,
             "/epgcaptureexit",
             "/epgcapturetimeout", str(request.timeout),
-        ] + list(request.extra_args)
+        ]
+        if request.channels:
+            args += ["/epgcapturech", request.channels]
+        if request.report_path:
+            # 前回の内容が混ざらないよう、書き出す前に消しておく
+            try:
+                os.remove(request.report_path)
+            except FileNotFoundError:
+                pass
+            except OSError as error:
+                logger.warning("取得結果の書き出し先を消せません: %s", error)
+            args += ["/epgcapturereport", request.report_path]
+        args += list(request.extra_args)
 
-        logger.info(
-            "%s の番組表取得を開始します。(制限時間 %s)",
-            request.driver, format_duration(request.timeout),
-        )
+        if request.channel_count:
+            logger.info(
+                "%s の番組表取得を開始します。(%d チャンネル / 制限時間 %s)",
+                request.driver, request.channel_count, format_duration(request.timeout),
+            )
+        else:
+            logger.info(
+                "%s の番組表取得を開始します。(制限時間 %s)",
+                request.driver, format_duration(request.timeout),
+            )
         logger.debug("起動: %s", " ".join(args))
 
         try:
@@ -168,6 +193,9 @@ class CaptureRunner:
                 driver=str(state["driver"]),
                 timeout=int(state["timeout"]),
                 exe=str(state["exe"]),
+                channels=str(state.get("channels", "")),
+                channel_count=int(state.get("channel_count", 0)),
+                report_path=str(state.get("report_path", "")),
             )
             started = datetime.fromisoformat(state["started"])
         except (KeyError, TypeError, ValueError, LookupError):
@@ -227,10 +255,13 @@ class CaptureRunner:
             driver=request.driver, started=started, finished=finished,
             exit_code=process.returncode, timeout=request.timeout,
             cancelled=cancelled, cancel_reason=cancel_reason, adopted=adopted,
+            channel_count=request.channel_count,
+            report=read_report(request.report_path),
         )
         logger.info(
-            "%s の番組表取得が終了しました。(%s, %s)",
+            "%s の番組表取得が終了しました。(%s, %s%s)",
             request.driver, result.text, format_duration(result.elapsed),
+            f", {len(result.report)} チャンネル" if result.report else "",
         )
         return result
 
@@ -245,6 +276,9 @@ class CaptureRunner:
             "timeout": request.timeout,
             "exe": request.exe,
             "started": started.isoformat(timespec="seconds"),
+            "channels": request.channels,
+            "channel_count": request.channel_count,
+            "report_path": request.report_path,
         }
         try:
             os.makedirs(os.path.dirname(os.path.abspath(self.state_path)), exist_ok=True)
@@ -305,6 +339,42 @@ class CaptureRunner:
 
         logger.error("TVTest が終了しないため強制終了します。(pid %s)", process.pid)
         process.kill()
+
+
+def read_report(path):
+    """Read the lines TVTest appended for the channels it walked.
+
+    Each line is "日時,空間,チャンネル,完了,秒数,チャンネル数".
+    """
+    if not path:
+        return []
+
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            lines = file.readlines()
+    except FileNotFoundError:
+        return []
+    except OSError as error:
+        logger.warning("取得結果を読めません: %s (%s)", path, error)
+        return []
+
+    entries = []
+    for line in lines:
+        fields = line.strip().split(",")
+        if len(fields) < 5:
+            continue
+        try:
+            entries.append({
+                "time": datetime.fromisoformat(fields[0]),
+                "space": int(fields[1]),
+                "channel": int(fields[2]),
+                "key": f"{int(fields[1])}:{int(fields[2])}",
+                "complete": fields[3] == "1",
+                "seconds": int(fields[4]),
+            })
+        except ValueError:
+            continue
+    return entries
 
 
 def _directory_of(exe):

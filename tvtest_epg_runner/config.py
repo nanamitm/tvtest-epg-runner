@@ -20,6 +20,8 @@ class DriverConfig:
     timeout: int = 40 * 60
     min_window: int = 10 * 60
     enabled: bool = True
+    instances: int = 1      # 同時に走らせる本数
+    channels: str = ""      # 対象の範囲 (/epgcapturech と同じ書式、空で全部)
 
 
 @dataclass
@@ -31,6 +33,13 @@ class EdcbConfig:
     default_start_margin: int = 30
     default_end_margin: int = 30
     required: bool = True
+
+
+@dataclass
+class PriorityConfig:
+    enabled: bool = True     # 最終取得が古い順に選ぶ
+    use_addon: bool = True   # アドオンの最終更新も参照する
+    reserve: int = 120       # 制限時間から差し引く余裕
 
 
 @dataclass
@@ -50,10 +59,12 @@ class Config:
     every: int | None = None
     run_at_start: bool = False
     edcb: EdcbConfig = field(default_factory=EdcbConfig)
+    priority: PriorityConfig = field(default_factory=PriorityConfig)
     addon: AddonConfig = field(default_factory=AddonConfig)
     log_file: str = ""
     log_level: str = "INFO"
-    state_file: str = ""
+    state_dir: str = ""
+    history_file: str = ""
     path: str = ""
 
     @property
@@ -97,6 +108,8 @@ def load(path=None):
             timeout=parse_duration(entry.get("timeout"), 40 * 60),
             min_window=parse_duration(entry.get("min_window"), 10 * 60),
             enabled=bool(entry.get("enabled", True)),
+            instances=max(1, int(entry.get("instances", 1))),
+            channels=str(entry.get("channels", "")).strip(),
         ))
     if not drivers:
         raise ConfigError("[[driver]] を少なくとも1つ指定してください。")
@@ -122,6 +135,13 @@ def load(path=None):
         required=bool(edcb_data.get("required", True)),
     )
 
+    priority_data = data.get("priority", {})
+    priority = PriorityConfig(
+        enabled=bool(priority_data.get("enabled", True)),
+        use_addon=bool(priority_data.get("use_addon", True)),
+        reserve=parse_duration(priority_data.get("reserve"), PriorityConfig.reserve),
+    )
+
     addon_data = data.get("addon", {})
     addon = AddonConfig(
         url=addon_data.get("url", ""),
@@ -142,11 +162,13 @@ def load(path=None):
         every=every,
         run_at_start=bool(schedule.get("run_at_start", False)),
         edcb=edcb,
+        priority=priority,
         addon=addon,
         log_file=log_file,
         log_level=str(log_data.get("level", "INFO")).upper(),
-        state_file=os.path.join(
-            os.path.dirname(os.path.abspath(log_file)), "capture-state.json"),
+        state_dir=os.path.dirname(os.path.abspath(log_file)),
+        history_file=os.path.join(
+            os.path.dirname(os.path.abspath(log_file)), "history.json"),
         path=os.path.abspath(path),
     )
 
@@ -179,6 +201,14 @@ extra_args = {extra_args}
 # 起動直後にも1回実行する場合は true。
 run_at_start = {run_at_start}
 
+[priority]
+# 最終取得が古いチャンネルから順に取得します。
+enabled = {priority_enabled}
+# 他の TVTest が更新した分も踏まえるため、アドオンの最終更新時刻も見ます。
+use_addon = {priority_use_addon}
+# 1回の取得に詰め込みすぎないよう、制限時間から差し引く余裕。
+reserve = {priority_reserve}
+
 [edcb]
 # EpgTimerSrv の HTTP サーバ (EnableHttpSrv=1 / HttpPort)。
 url = {edcb_url}
@@ -210,6 +240,10 @@ name = {name}
 timeout = {timeout}
 # 予約までこれ未満しか空きがなければスキップします。
 min_window = {min_window}
+# 同時に走らせる本数。EDCB の空きチューナー数まで自動で下がります。
+instances = {instances}
+# 対象にするチャンネル (/epgcapturech と同じ書式、空で全部)。
+channels = {channels}
 enabled = {enabled}
 """
 
@@ -237,6 +271,8 @@ def values_from(config):
                 "name": driver.name,
                 "timeout": duration_text(driver.timeout),
                 "min_window": duration_text(driver.min_window),
+                "instances": driver.instances,
+                "channels": driver.channels,
                 "enabled": driver.enabled,
             }
             for driver in config.drivers
@@ -244,6 +280,11 @@ def values_from(config):
         "times": [f"{entry:%H:%M}" for entry in config.times],
         "every": duration_text(config.every) if config.every else "",
         "run_at_start": config.run_at_start,
+        "priority": {
+            "enabled": config.priority.enabled,
+            "use_addon": config.priority.use_addon,
+            "reserve": duration_text(config.priority.reserve),
+        },
         "edcb": {
             "url": config.edcb.url,
             "guard": duration_text(config.edcb.guard),
@@ -276,6 +317,8 @@ def render(values):
             name=_string(driver["name"]),
             timeout=_string(driver["timeout"]),
             min_window=_string(driver["min_window"]),
+            instances=int(driver["instances"]),
+            channels=_string(driver["channels"]),
             enabled=_bool(driver["enabled"]),
         ) + "\n"
         for driver in values["drivers"]
@@ -295,8 +338,12 @@ def render(values):
         log_file = f"file = {_string(values['log_file'])}\n"
 
     edcb = values["edcb"]
+    priority = values["priority"]
     addon = values["addon"]
     return TEMPLATE.format(
+        priority_enabled=_bool(priority["enabled"]),
+        priority_use_addon=_bool(priority["use_addon"]),
+        priority_reserve=_string(priority["reserve"]),
         exe=_string(values["exe"]),
         extra_args="[" + ", ".join(_string(a) for a in values["extra_args"]) + "]",
         drivers=drivers,

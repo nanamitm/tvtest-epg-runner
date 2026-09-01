@@ -11,13 +11,26 @@ extra_args = ["/log"]
 # 巡回するチューナーを順番に並べます。上から順に実行します。
 [[driver]]
 name = "BonDriver_dantto4k.dll"
-timeout = "40m"      # この時間を超えたら取得を打ち切る
+timeout = "40m"      # 1本あたりの取得の制限時間
 min_window = "15m"   # EDCB の予約までこれ未満しか空きがなければスキップ
+instances = 1        # 同時に走らせる本数 (空きチューナー数まで自動で下がる)
+channels = ""        # 対象にするチャンネル (/epgcapturech と同じ書式、空で全部)
 
 [[driver]]
 name = "BonDriver_PX-MLT.dll"
 timeout = "30m"
 min_window = "10m"
+instances = 3
+channels = ""
+
+[priority]
+# 最終取得が古いチャンネルから順に取得します。1回の取得で回りきれない場合も、
+# 次の実行で続きから回るので、少しずつ全チャンネルが更新されます。
+enabled = true
+# 他の TVTest が更新した分を取り直さないよう、アドオンの最終更新時刻も見ます。
+use_addon = true
+# 1回に詰め込みすぎないよう、制限時間から差し引く余裕。
+reserve = "2m"
 
 [schedule]
 # 毎日この時刻に実行します。every = "6h" のように間隔指定もできます

@@ -11,6 +11,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 STATUS_PATH = "/api/runner-status"
+SERVICES_PATH = "/api/services"
 
 
 class AddonNotifier:
@@ -60,6 +61,40 @@ class AddonNotifier:
         logger.info("実行結果を EPG 共有サーバへ送信しました。")
         self._warned = False
         return True
+
+    def fetch_service_times(self):
+        """When the sync store last saw each service, keyed by NID/TSID/SID.
+
+        A service somebody else refreshed a moment ago does not need capturing
+        again, whoever did it.
+        """
+        if not self.enabled:
+            return {}
+
+        headers = {}
+        if self.token:
+            headers["X-EPG-Token"] = self.token
+
+        try:
+            response = requests.get(
+                f"{self.url}{SERVICES_PATH}", headers=headers, timeout=self.timeout)
+            response.raise_for_status()
+            services = response.json().get("services", [])
+        except (requests.RequestException, ValueError) as error:
+            self._warn("EPG 共有サーバの状況を取得できません: %s", error)
+            return {}
+
+        times = {}
+        for service in services:
+            try:
+                key = (
+                    int(service["nid"]), int(service["tsid"]), int(service["sid"]))
+                updated = datetime.fromisoformat(service["updated_at"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            # 記録は UTC なので、ローカル時刻に揃えてから比べる
+            times[key] = updated.astimezone().replace(tzinfo=None)
+        return times
 
     def _warn(self, message, *args):
         # One warning per outage is enough; a nightly runner would otherwise

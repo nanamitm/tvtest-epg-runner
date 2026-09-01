@@ -36,24 +36,17 @@ def setup_logging(config, console=True):
 
 
 def run_once(scheduler, drivers):
-    adopted = scheduler.adopt_pending()
-    results = [adopted] if adopted is not None else []
-    targets = scheduler.config.enabled_drivers
-    if drivers:
-        wanted = set(drivers)
-        targets = [driver for driver in targets if driver.name in wanted]
-        missing = wanted - {driver.name for driver in targets}
-        for name in sorted(missing):
-            logger.error("設定にないドライバです: %s", name)
-    if not targets:
+    results = list(scheduler.adopt_pending())
+
+    known = {driver.name for driver in scheduler.config.enabled_drivers}
+    for name in sorted(set(drivers or []) - known):
+        logger.error("設定にないドライバです: %s", name)
+    if drivers and not (set(drivers) & known):
         return 1
 
-    for driver in targets:
-        results.append(scheduler.run_driver(driver))
-
-    scheduler.last_round = results
-    scheduler.last_finished = datetime.now()
-    scheduler.notify(results)
+    results += scheduler.run_round(drivers or None)
+    if not results:
+        return 1
 
     print()
     for result in results:
@@ -116,9 +109,11 @@ def check(scheduler, config):
     print(f"通知先       : {config.addon.url or '(なし)'}")
     print()
 
+    freshness = scheduler._addon_freshness()  # noqa: SLF001 - 表示のためだけ
     now = datetime.now()
     for driver in config.drivers:
-        window, blocker = scheduler.free_window(driver.name, now)
+        window, blocker = scheduler.free_window(
+            driver.name, now, needed=driver.instances)
         state = "有効" if driver.enabled else "無効"
         if window is None:
             free = "EDCB 管理外"
@@ -126,9 +121,19 @@ def check(scheduler, config):
             free = "空きなし"
         else:
             free = f"空き {format_duration(window)}"
-        print(f"{driver.name} [{state}] {free} / 制限時間 {format_duration(driver.timeout)}")
+        print(
+            f"{driver.name} [{state}] {free} / 制限時間 "
+            f"{format_duration(driver.timeout)} / 同時 {driver.instances} 本")
         if blocker is not None:
             print(f"    次の予約: {blocker}")
+
+        groups = scheduler._groups_for(driver)  # noqa: SLF001 - 表示のためだけ
+        if groups:
+            captured, total = scheduler.history.summary(driver.name, groups)
+            ordered = scheduler.history.order(driver.name, groups, freshness)
+            print(f"    チャンネル {total} / 取得済み {captured}")
+            print("    次に取得: " + ", ".join(
+                f"{g.key}({g.name})" for g in ordered[:5]))
     return 0
 
 

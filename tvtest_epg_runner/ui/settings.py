@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTimeEdit, QVBoxLayout, QWidget,
 )
 
+from .. import channels
 from .. import config as config_module
 from ..edcb import EdcbClient, EdcbUnavailable, free_until
 from ..notify import STATUS_PATH
@@ -27,7 +28,7 @@ from ..util import format_duration, parse_duration
 
 logger = logging.getLogger(__name__)
 
-DRIVER_COLUMNS = ("ドライバ", "制限時間", "最小空き", "有効")
+DRIVER_COLUMNS = ("ドライバ", "制限時間", "最小空き", "同時", "チャンネル", "有効")
 
 
 class SettingsDialog(QDialog):
@@ -126,6 +127,23 @@ class SettingsDialog(QDialog):
             buttons.addWidget(button)
         buttons.addStretch(1)
         layout.addLayout(buttons)
+
+        box = QGroupBox("取得するチャンネルの選び方")
+        form = QFormLayout(box)
+        self.priority_enabled = QCheckBox("最終取得が古いチャンネルから順に取得する")
+        form.addRow(self.priority_enabled)
+        self.priority_use_addon = QCheckBox(
+            "EPG 共有サーバで既に新しいチャンネルは後回しにする")
+        form.addRow(self.priority_use_addon)
+        self.priority_reserve = QLineEdit()
+        form.addRow("制限時間から差し引く余裕", self.priority_reserve)
+        form.addRow("", QLabel(
+            "「同時」の本数は EDCB の空きチューナー数まで自動で下がります。\n"
+            "「チャンネル」は対象の範囲で、空にすると全チャンネルが対象です。"))
+        layout.addWidget(box)
+
+        self.priority_enabled.toggled.connect(self.priority_use_addon.setEnabled)
+        self.priority_enabled.toggled.connect(self.priority_reserve.setEnabled)
         return page
 
     def _driver_names(self):
@@ -153,15 +171,17 @@ class SettingsDialog(QDialog):
 
         self.driver_table.setItem(row, 1, QTableWidgetItem(driver["timeout"]))
         self.driver_table.setItem(row, 2, QTableWidgetItem(driver["min_window"]))
+        self.driver_table.setItem(row, 3, QTableWidgetItem(str(driver["instances"])))
+        self.driver_table.setItem(row, 4, QTableWidgetItem(driver["channels"]))
 
         enabled = QTableWidgetItem()
         enabled.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
         enabled.setCheckState(Qt.Checked if driver["enabled"] else Qt.Unchecked)
-        self.driver_table.setItem(row, 3, enabled)
+        self.driver_table.setItem(row, 5, enabled)
 
     def _add_driver(self):
         self._add_driver_row({"name": "", "timeout": "40m", "min_window": "15m",
-                              "enabled": True})
+                              "instances": 1, "channels": "", "enabled": True})
         self.driver_table.selectRow(self.driver_table.rowCount() - 1)
 
     def _remove_driver(self):
@@ -190,7 +210,9 @@ class SettingsDialog(QDialog):
                 "name": name,
                 "timeout": self._cell(row, 1),
                 "min_window": self._cell(row, 2),
-                "enabled": self.driver_table.item(row, 3).checkState() == Qt.Checked,
+                "instances": self._cell(row, 3) or "1",
+                "channels": self._cell(row, 4),
+                "enabled": self.driver_table.item(row, 5).checkState() == Qt.Checked,
             }
             if validate:
                 if not name:
@@ -200,6 +222,17 @@ class SettingsDialog(QDialog):
                         parse_duration(driver[key])
                     except ValueError as error:
                         raise ValueError(f"{name} の{label}: {error}") from error
+                try:
+                    driver["instances"] = max(1, int(driver["instances"]))
+                except ValueError as error:
+                    raise ValueError(f"{name} の同時本数は数字で指定してください。") from error
+                if driver["channels"]:
+                    try:
+                        channels.parse_spec(driver["channels"])
+                    except ValueError as error:
+                        raise ValueError(f"{name} のチャンネル: {error}") from error
+            else:
+                driver["instances"] = driver["instances"] or 1
             drivers.append(driver)
         if validate and not drivers:
             raise ValueError("チューナーを少なくとも1つ設定してください。")
@@ -399,6 +432,13 @@ class SettingsDialog(QDialog):
         for driver in values["drivers"]:
             self._add_driver_row(driver)
 
+        priority = values["priority"]
+        self.priority_enabled.setChecked(priority["enabled"])
+        self.priority_use_addon.setChecked(priority["use_addon"])
+        self.priority_reserve.setText(priority["reserve"])
+        self.priority_use_addon.setEnabled(priority["enabled"])
+        self.priority_reserve.setEnabled(priority["enabled"])
+
         self.times_list.addItems(values["times"])
         self.every_edit.setText(values["every"])
         use_times = not values["every"]
@@ -437,6 +477,11 @@ class SettingsDialog(QDialog):
             "times": times if use_times else [],
             "every": "" if use_times else self.every_edit.text().strip(),
             "run_at_start": self.run_at_start.isChecked(),
+            "priority": {
+                "enabled": self.priority_enabled.isChecked(),
+                "use_addon": self.priority_use_addon.isChecked(),
+                "reserve": self.priority_reserve.text().strip(),
+            },
             "edcb": {
                 "url": self.edcb_url.text().strip(),
                 "guard": self.edcb_guard.text().strip(),

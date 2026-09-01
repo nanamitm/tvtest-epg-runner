@@ -10,7 +10,14 @@ stopped by hand, and everything it does is configured from a settings dialog.
 ## What it does
 
 - Runs `TVTest.exe /d <BonDriver> /epgcaptureexit /epgcapturetimeout <限界>`
-  for each configured tuner, one after another.
+  for each configured tuner, several at a time where the tuners allow it.
+- Captures the **least recently captured channels first**, as many as the free
+  time allows, and deals them across the tuners a driver can spare
+  (`instances`). A round that cannot cover everything picks up where it left
+  off next time, so one tuner in short slices covers the same ground as
+  several in parallel — just slower.
+- Counts a channel as fresh when anyone else on the LAN refreshed it, by
+  reading the add-on's per-service update times.
 - Asks EpgTimerSrv how long that BonDriver stays free
   (`/api/EnumTunerReserveInfo`, which groups reservations by tuner) and
   **shortens the capture to fit the gap** before the next recording, margins
@@ -28,7 +35,10 @@ stopped by hand, and everything it does is configured from a settings dialog.
   a tuner unwatched. The note is only trusted when the pid is still alive and
   still running the configured `TVTest.exe`.
 
-Requires a TVTest build with `/epgcapturetimeout` and the cancel event, i.e.
+Channel selection needs `/epgcapturech` and `/epgcapturereport`; the report is
+how the runner learns which channels a capture actually finished, and how long
+each one took. Requires a TVTest build with those, the cancel event and
+`/epgcapturetimeout`, i.e.
 [nanamitm/TVTest](https://github.com/nanamitm/TVTest) `develop` at
 `Add ways to cancel command-line EPG capture` or later.
 
@@ -86,6 +96,10 @@ important ones:
 |---|---|
 | `driver.timeout` | Upper bound for one capture. It is shortened when EDCB needs the tuner sooner. |
 | `driver.min_window` | Skip this driver when less free time than this is left. |
+| `driver.instances` | How many captures to run at once on this driver. Lowered to what EDCB leaves free. |
+| `driver.channels` | Limit the pool to part of the channel list (`/epgcapturech` syntax). |
+| `priority.enabled` | Capture the stalest channels first instead of walking the whole list. |
+| `priority.use_addon` | Let the add-on's update times count as a capture. |
 | `edcb.guard` | Stop this long before a recording starts (EDCB's own `NGEpgCapTime` is the same idea). |
 | `edcb.required` | With `true`, no capture runs while EpgTimerSrv cannot be reached. |
 | `schedule.times` / `schedule.every` | Daily times, or a fixed interval. |

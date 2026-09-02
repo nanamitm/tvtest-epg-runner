@@ -54,8 +54,13 @@ Point `exe` at a TVTest folder **dedicated to capturing** — not the one used
 for watching, whose settings and tuner it would otherwise fight over.
 
 Start it with `run.cmd` (no console window), or `python -m tvtest_epg_runner`.
-To have it come up with Windows, put a shortcut to `run.cmd` in
-`shell:startup`.
+Tick **Windows にログオンしたときに起動する** in the settings to have it come
+up on its own: that writes a logon entry running `run.pyw`, which starts the
+tray application from anywhere without a console.
+
+It is a logon entry rather than a service on purpose. The tray icon needs a
+desktop, and the event that cancels a capture lives in the session namespace,
+so the runner has to share a session with the TVTest it starts.
 
 ## Usage
 
@@ -100,6 +105,10 @@ important ones:
 | `driver.channels` | Limit the pool to part of the channel list (`/epgcapturech` syntax). |
 | `priority.enabled` | Capture the stalest channels first instead of walking the whole list. |
 | `priority.use_addon` | Let the add-on's update times count as a capture. |
+
+Starting at logon is not part of the configuration file — it is a registry
+entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, written
+and removed by the checkbox.
 | `edcb.guard` | Stop this long before a recording starts (EDCB's own `NGEpgCapTime` is the same idea). |
 | `edcb.required` | With `true`, no capture runs while EpgTimerSrv cannot be reached. |
 | `schedule.times` / `schedule.every` | Daily times, or a fixed interval. |

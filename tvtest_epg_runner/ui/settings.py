@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTimeEdit, QVBoxLayout, QWidget,
 )
 
+from .. import autostart
 from .. import channels
 from .. import config as config_module
 from ..edcb import EdcbClient, EdcbUnavailable, free_until
@@ -90,6 +91,11 @@ class SettingsDialog(QDialog):
         self.log_file_edit = QLineEdit()
         self.log_file_edit.setPlaceholderText("既定(設定ファイルと同じ場所の runner.log)")
         form.addRow("ログの保存先", self.log_file_edit)
+
+        self.autostart_check = QCheckBox("Windows にログオンしたときに起動する")
+        form.addRow("", self.autostart_check)
+        form.addRow("", QLabel(
+            "取得中の TVTest を操作するため、サービスではなくログオン時に起動します。"))
         return page
 
     def _browse_exe(self):
@@ -436,6 +442,7 @@ class SettingsDialog(QDialog):
         self.args_edit.setText(" ".join(values["extra_args"]))
         self.log_level.setCurrentText(values["log_level"])
         self.log_file_edit.setText(values["log_file"])
+        self.autostart_check.setChecked(autostart.is_enabled())
 
         for driver in values["drivers"]:
             self._add_driver_row(driver)
@@ -527,6 +534,16 @@ class SettingsDialog(QDialog):
         except OSError as error:
             QMessageBox.critical(self, "設定", f"書き込みに失敗しました。\n\n{error}")
             return
+
+        # 自動起動は OS 側の設定なので、設定ファイルとは別に反映する
+        try:
+            if autostart.apply(self.autostart_check.isChecked()):
+                logger.info(
+                    "自動起動を%sにしました。",
+                    "有効" if self.autostart_check.isChecked() else "無効")
+        except OSError as error:
+            QMessageBox.warning(
+                self, "設定", f"自動起動を変更できません。\n\n{error}")
 
         logger.info("設定を保存しました: %s", self._config.path)
         self.accept()

@@ -65,7 +65,7 @@ retention_days = 14
 [addon]
 # 実行結果の送信先。内蔵サーバを使う場合は http://127.0.0.1:8077 を指定します。
 # Home Assistant の TVTest EPG Sync アドオン。空にすると通知しません。
-url = "http://192.168.10.66:8077"
+url = "http://homeassistant.local:8077"
 token = ""
 name = "epg-runner"
 

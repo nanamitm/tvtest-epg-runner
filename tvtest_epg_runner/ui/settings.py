@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 
 DRIVER_COLUMNS = ("ドライバ", "制限時間", "最小空き", "同時", "打ち切り", "チャンネル", "有効")
 
+# ドライバ名以外の列は中身の幅で足りる (0 列目が残りを受け取る)
+DRIVER_COLUMN_WIDTHS = {1: 90, 2: 90, 3: 56, 4: 90, 5: 150, 6: 56}
+DRIVER_NAME_MIN_WIDTH = 210
+
 
 class SettingsDialog(QDialog):
     def __init__(self, config, parent=None):
@@ -39,7 +43,7 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("TVTest EPG Runner の設定")
         # トレイと同じ印を出す (単体で開かれた場合も含めて確実に付ける)
         self.setWindowIcon(make_icon(IDLE))
-        self.resize(660, 560)
+        self.resize(860, 600)
 
         self._config = config
         self._values = config_module.values_from(config)
@@ -119,8 +123,15 @@ class SettingsDialog(QDialog):
         self.driver_table.verticalHeader().setVisible(False)
         self.driver_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.driver_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        # ドライバ名は長いので残りを全部使い、他は中身に見合った幅で固定する
         header = self.driver_table.horizontalHeader()
+        header.setMinimumSectionSize(50)
         header.setSectionResizeMode(0, QHeaderView.Stretch)
+        for column, width in DRIVER_COLUMN_WIDTHS.items():
+            header.setSectionResizeMode(column, QHeaderView.Interactive)
+            self.driver_table.setColumnWidth(column, width)
+        self.driver_table.setMinimumWidth(
+            sum(DRIVER_COLUMN_WIDTHS.values()) + DRIVER_NAME_MIN_WIDTH)
         layout.addWidget(self.driver_table)
         layout.addWidget(QLabel("上から順に取得します。時間は 40m や 1h30m のように書きます。"))
 

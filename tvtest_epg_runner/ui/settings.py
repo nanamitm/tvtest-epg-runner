@@ -12,7 +12,8 @@ import logging
 import os
 
 import requests
-from PySide6.QtCore import QTime, Qt
+from PySide6.QtCore import QTime, Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
@@ -38,8 +39,9 @@ DRIVER_NAME_MIN_WIDTH = 210
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, config, parent=None):
+    def __init__(self, config, parent=None, server=None):
         super().__init__(parent)
+        self._server = server
         self.setWindowTitle("TVTest EPG Runner の設定")
         # トレイと同じ印を出す (単体で開かれた場合も含めて確実に付ける)
         self.setWindowIcon(make_icon(IDLE))
@@ -54,6 +56,7 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._build_drivers(), "チューナー")
         tabs.addTab(self._build_schedule(), "スケジュール")
         tabs.addTab(self._build_edcb(), "EDCB")
+        tabs.addTab(self._build_server(), "サーバ")
         tabs.addTab(self._build_addon(), "通知")
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
@@ -381,6 +384,74 @@ class SettingsDialog(QDialog):
                 lines.append(f"    次の予約: {blocker}")
         QMessageBox.information(self, "EDCB", "\n".join(lines))
 
+    # -- サーバ ------------------------------------------------------------
+
+    def _build_server(self):
+        page = QWidget()
+        form = QFormLayout(page)
+
+        self.server_enabled = QCheckBox("EPG 共有サーバをこのアプリで動かす")
+        form.addRow(self.server_enabled)
+        form.addRow("", QLabel(
+            "Home Assistant が無い環境向けです。LAN の TVTest からは\n"
+            "http://<このPC>:<TVTest 用のポート> を指定します。"))
+
+        self.server_api_port = QLineEdit()
+        form.addRow("TVTest 用のポート", self.server_api_port)
+        self.server_ui_port = QLineEdit()
+        form.addRow("番組表のポート", self.server_ui_port)
+        form.addRow("", QLabel("0 にすると番組表の画面を出しません。"))
+
+        self.server_token = QLineEdit()
+        self.server_token.setEchoMode(QLineEdit.Password)
+        form.addRow("トークン", self.server_token)
+        form.addRow("", QLabel("空にすると、ポートに届く相手は誰でも読み書きできます。"))
+
+        self.server_data_dir = QLineEdit()
+        self.server_data_dir.setPlaceholderText("既定(ログと同じ場所の epg)")
+        form.addRow("EPG の保管先", self.server_data_dir)
+
+        self.server_retention = QLineEdit()
+        form.addRow("保管する日数", self.server_retention)
+
+        row = QHBoxLayout()
+        use_local = QPushButton("通知先をこのサーバにする")
+        use_local.clicked.connect(self._use_local_server)
+        row.addWidget(use_local)
+        open_guide = QPushButton("番組表を開く")
+        open_guide.clicked.connect(self._open_guide)
+        row.addWidget(open_guide)
+        row.addStretch(1)
+        holder = QWidget()
+        holder.setLayout(row)
+        form.addRow("", holder)
+
+        form.addRow("", QLabel(
+            "初回の起動時に Windows のファイアウォールの確認が出ます。\n"
+            "LAN の他の PC から使うには、許可してください。"))
+
+        for widget in (self.server_api_port, self.server_ui_port, self.server_token,
+                       self.server_data_dir, self.server_retention):
+            self.server_enabled.toggled.connect(widget.setEnabled)
+        return page
+
+    def _use_local_server(self):
+        try:
+            port = int(self.server_api_port.text())
+        except ValueError:
+            QMessageBox.warning(self, "サーバ", "TVTest 用のポートが数字ではありません。")
+            return
+        self.addon_url.setText(f"http://127.0.0.1:{port}")
+        self.addon_token.setText(self.server_token.text())
+
+    def _open_guide(self):
+        if self._server is None or not self._server.running:
+            QMessageBox.information(
+                self, "サーバ",
+                "サーバが動いていません。有効にして保存してから開いてください。")
+            return
+        QDesktopServices.openUrl(QUrl(self._server.ui_url))
+
     # -- 通知 --------------------------------------------------------------
 
     def _build_addon(self):
@@ -486,6 +557,17 @@ class SettingsDialog(QDialog):
         self.edcb_end_margin.setText(edcb["default_end_margin"])
         self.edcb_required.setChecked(edcb["required"])
 
+        server = values["server"]
+        self.server_enabled.setChecked(server["enabled"])
+        self.server_api_port.setText(str(server["api_port"]))
+        self.server_ui_port.setText(str(server["ui_port"]))
+        self.server_token.setText(server["token"])
+        self.server_data_dir.setText(server["data_dir"])
+        self.server_retention.setText(str(server["retention_days"]))
+        for widget in (self.server_api_port, self.server_ui_port, self.server_token,
+                       self.server_data_dir, self.server_retention):
+            widget.setEnabled(server["enabled"])
+
         addon = values["addon"]
         self.addon_url.setText(addon["url"])
         self.addon_token.setText(addon["token"])
@@ -523,6 +605,16 @@ class SettingsDialog(QDialog):
                 "default_end_margin": self.edcb_end_margin.text().strip(),
                 "required": self.edcb_required.isChecked(),
             },
+            "server": {
+                "enabled": self.server_enabled.isChecked(),
+                "api_port": self._port(self.server_api_port.text(), "TVTest 用のポート"),
+                "ui_port": self._port(self.server_ui_port.text(), "番組表のポート",
+                                      allow_zero=True),
+                "token": self.server_token.text(),
+                "data_dir": self.server_data_dir.text().strip(),
+                "retention_days": self._number(
+                    self.server_retention.text(), "保管する日数"),
+            },
             "addon": {
                 "url": self.addon_url.text().strip(),
                 "token": self.addon_token.text(),
@@ -532,6 +624,25 @@ class SettingsDialog(QDialog):
             "log_file": self.log_file_edit.text().strip(),
             "log_level": self.log_level.currentText(),
         }
+
+    @staticmethod
+    def _number(text, label):
+        try:
+            value = int(str(text).strip())
+        except ValueError as error:
+            raise ValueError(f"{label}は数字で指定してください。") from error
+        if value < 0:
+            raise ValueError(f"{label}に負の数は指定できません。")
+        return value
+
+    @classmethod
+    def _port(cls, text, label, allow_zero=False):
+        value = cls._number(text, label)
+        if value == 0 and allow_zero:
+            return 0
+        if not 1 <= value <= 65535:
+            raise ValueError(f"{label}の範囲が不正です。")
+        return value
 
     def _save(self):
         try:

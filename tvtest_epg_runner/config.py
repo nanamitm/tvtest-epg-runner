@@ -45,6 +45,18 @@ class PriorityConfig:
 
 
 @dataclass
+class ServerConfig:
+    """内蔵の EPG 共有サーバ (Home Assistant が無い環境向け)"""
+
+    enabled: bool = False
+    api_port: int = 8077      # TVTest が接続するポート
+    ui_port: int = 8099       # ブラウザで番組表を見るポート (0 で無効)
+    token: str = ""
+    data_dir: str = ""
+    retention_days: int = 14
+
+
+@dataclass
 class AddonConfig:
     url: str = ""
     token: str = ""
@@ -62,6 +74,7 @@ class Config:
     run_at_start: bool = False
     edcb: EdcbConfig = field(default_factory=EdcbConfig)
     priority: PriorityConfig = field(default_factory=PriorityConfig)
+    server: ServerConfig = field(default_factory=ServerConfig)
     addon: AddonConfig = field(default_factory=AddonConfig)
     log_file: str = ""
     log_level: str = "INFO"
@@ -146,6 +159,17 @@ def load(path=None):
         min_age=parse_duration(priority_data.get("min_age"), PriorityConfig.min_age),
     )
 
+    server_data = data.get("server", {})
+    server = ServerConfig(
+        enabled=bool(server_data.get("enabled", False)),
+        api_port=int(server_data.get("api_port", ServerConfig.api_port)),
+        ui_port=int(server_data.get("ui_port", ServerConfig.ui_port)),
+        token=str(server_data.get("token", "")),
+        data_dir=str(server_data.get("data_dir", "")).strip(),
+        retention_days=int(
+            server_data.get("retention_days", ServerConfig.retention_days)),
+    )
+
     addon_data = data.get("addon", {})
     addon = AddonConfig(
         url=addon_data.get("url", ""),
@@ -158,6 +182,10 @@ def load(path=None):
     log_file = log_data.get("file") or os.path.join(
         os.path.dirname(os.path.abspath(path)), "runner.log")
 
+    if not server.data_dir:
+        server.data_dir = os.path.join(
+            os.path.dirname(os.path.abspath(log_file)), "epg")
+
     return Config(
         exe=exe,
         extra_args=list(tvtest.get("extra_args", ["/log"])),
@@ -167,6 +195,7 @@ def load(path=None):
         run_at_start=bool(schedule.get("run_at_start", False)),
         edcb=edcb,
         priority=priority,
+        server=server,
         addon=addon,
         log_file=log_file,
         log_level=str(log_data.get("level", "INFO")).upper(),
@@ -229,6 +258,19 @@ default_start_margin = {edcb_start_margin}
 default_end_margin = {edcb_end_margin}
 # true にすると、EDCB に問い合わせできないときは取得しません。
 required = {edcb_required}
+
+[server]
+# Home Assistant が無い環境向けに、EPG 共有サーバをこのアプリの中で動かします。
+# LAN の TVTest からは http://<このPC>:<api_port> を指定します。
+enabled = {server_enabled}
+api_port = {server_api_port}
+# ブラウザで番組表を見るポート (0 で無効)。
+ui_port = {server_ui_port}
+# 空にすると、ポートに届く相手は誰でも読み書きできます。
+token = {server_token}
+# EPG の保管先 (空ならログと同じ場所の epg)。
+data_dir = {server_data_dir}
+retention_days = {server_retention_days}
 
 [addon]
 # Home Assistant の TVTest EPG Sync アドオン。空にすると通知しません。
@@ -306,6 +348,14 @@ def values_from(config):
             "default_end_margin": duration_text(config.edcb.default_end_margin),
             "required": config.edcb.required,
         },
+        "server": {
+            "enabled": config.server.enabled,
+            "api_port": config.server.api_port,
+            "ui_port": config.server.ui_port,
+            "token": config.server.token,
+            "data_dir": "" if _is_default_data_dir(config) else config.server.data_dir,
+            "retention_days": config.server.retention_days,
+        },
         "addon": {
             "url": config.addon.url,
             "token": config.addon.token,
@@ -315,6 +365,12 @@ def values_from(config):
         "log_file": "" if _is_default_log(config) else config.log_file,
         "log_level": config.log_level,
     }
+
+
+def _is_default_data_dir(config):
+    default = os.path.join(
+        os.path.dirname(os.path.abspath(config.log_file)), "epg")
+    return os.path.normcase(config.server.data_dir) == os.path.normcase(default)
 
 
 def _is_default_log(config):
@@ -352,12 +408,19 @@ def render(values):
 
     edcb = values["edcb"]
     priority = values["priority"]
+    server = values["server"]
     addon = values["addon"]
     return TEMPLATE.format(
         priority_enabled=_bool(priority["enabled"]),
         priority_use_addon=_bool(priority["use_addon"]),
         priority_reserve=_string(priority["reserve"]),
         priority_min_age=_string(priority["min_age"]),
+        server_enabled=_bool(server["enabled"]),
+        server_api_port=int(server["api_port"]),
+        server_ui_port=int(server["ui_port"]),
+        server_token=_string(server["token"]),
+        server_data_dir=_string(server["data_dir"]),
+        server_retention_days=int(server["retention_days"]),
         exe=_string(values["exe"]),
         extra_args="[" + ", ".join(_string(a) for a in values["extra_args"]) + "]",
         drivers=drivers,

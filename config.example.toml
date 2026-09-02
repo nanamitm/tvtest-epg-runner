@@ -52,7 +52,18 @@ default_end_margin = "30s"
 # true にすると、EDCB に問い合わせできないときは取得しません。
 required = true
 
+[server]
+# Home Assistant が無い環境向けに、EPG 共有サーバをこのアプリの中で動かします。
+# LAN の TVTest からは http://<このPC>:8077 を指定します。
+enabled = false
+api_port = 8077     # TVTest が接続するポート
+ui_port = 8099      # ブラウザで番組表を見るポート (0 で無効)
+token = ""          # 空にすると誰でも読み書きできます
+data_dir = ""       # EPG の保管先 (空ならログと同じ場所の epg)
+retention_days = 14
+
 [addon]
+# 実行結果の送信先。内蔵サーバを使う場合は http://127.0.0.1:8077 を指定します。
 # Home Assistant の TVTest EPG Sync アドオン。空にすると通知しません。
 url = "http://192.168.10.66:8077"
 token = ""

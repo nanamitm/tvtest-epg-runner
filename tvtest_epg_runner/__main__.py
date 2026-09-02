@@ -91,10 +91,16 @@ def main(argv=None):
         print("TVTest EPG Runner は既に起動しています。", file=sys.stderr)
         return 1
 
+    from .syncserver import SyncServer
     from .ui.app import TrayApplication
 
     logger.info("TVTest EPG Runner を開始します。(設定 %s)", config.path)
-    return TrayApplication(scheduler, config).run()
+    server = SyncServer(config.server)
+    server.start()
+    try:
+        return TrayApplication(scheduler, config, server).run()
+    finally:
+        server.stop()
 
 
 def check(scheduler, config):

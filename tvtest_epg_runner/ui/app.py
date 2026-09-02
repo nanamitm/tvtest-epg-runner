@@ -28,9 +28,10 @@ class SchedulerBridge(QObject):
 
 
 class TrayApplication:
-    def __init__(self, scheduler, config):
+    def __init__(self, scheduler, config, server=None):
         self.scheduler = scheduler
         self.config = config
+        self.server = server
         self.dialog = None
 
         self.app = QApplication.instance() or QApplication([])
@@ -89,6 +90,10 @@ class TrayApplication:
         self.menu.addSeparator()
         self.results_menu = self.menu.addMenu("前回の結果")
 
+        self.guide_action = QAction("番組表を開く")
+        self.guide_action.triggered.connect(self._open_guide)
+        self.menu.addAction(self.guide_action)
+
         settings_action = QAction("設定…")
         settings_action.triggered.connect(self.open_settings)
         self.menu.addAction(settings_action)
@@ -104,6 +109,7 @@ class TrayApplication:
 
     def _update_menu(self):
         busy = self.scheduler.running
+        self.guide_action.setVisible(self.server is not None and self.server.running)
         self.status_action.setText(self._status_text())
         self.run_action.setEnabled(not busy)
         self.cancel_action.setEnabled(busy)
@@ -139,6 +145,10 @@ class TrayApplication:
             return f"待機中 (次回 {scheduler.next_run:%m/%d %H:%M})"
         return scheduler.state
 
+    def _open_guide(self):
+        if self.server is not None and self.server.running:
+            QDesktopServices.openUrl(QUrl(self.server.ui_url))
+
     def _on_activated(self, reason):
         if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
             self.open_settings()
@@ -151,10 +161,12 @@ class TrayApplication:
             self.dialog.activateWindow()
             return
 
-        self.dialog = SettingsDialog(self.config)
+        self.dialog = SettingsDialog(self.config, server=self.server)
         if self.dialog.exec() == SettingsDialog.Accepted and self.dialog.saved_config:
             self.config = self.dialog.saved_config
             self.scheduler.reconfigure(self.config)
+            if self.server is not None:
+                self.server.reconfigure(self.config.server)
             self.tray.showMessage(
                 "TVTest EPG Runner", "設定を保存しました。",
                 QSystemTrayIcon.Information, 3000)

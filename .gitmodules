@@ -1,0 +1,3 @@
+[submodule "thirdparty/home-assistant-addons"]
+	path = thirdparty/home-assistant-addons
+	url = https://github.com/nanamitm/home-assistant-addons.git

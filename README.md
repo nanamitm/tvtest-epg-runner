@@ -42,9 +42,22 @@ each one took. Requires a TVTest build with those, the cancel event and
 [nanamitm/TVTest](https://github.com/nanamitm/TVTest) `develop` at
 `Add ways to cancel command-line EPG capture` or later.
 
+## Without Home Assistant
+
+The add-on's server is plain standard library Python, so the runner can serve
+it itself: turn on **EPG 共有サーバをこのアプリで動かす** in the サーバ tab and
+the machine that captures also holds the EPG for the LAN. TVTest instances
+point at `http://<this-pc>:8077`, and `番組表を開く` in the tray menu opens the
+same web guide the add-on serves.
+
+The server is carried as a submodule of the add-on repository rather than
+copied, so both run the same code. Clone with `--recursive`, or run
+`git submodule update --init` afterwards.
+
 ## Install
 
 ```
+git clone --recursive https://github.com/nanamitm/tvtest-epg-runner
 pip install -r requirements.txt   # PySide6 と requests
 copy config.example.toml %APPDATA%\TVTestEpgRunner\config.toml
 notepad %APPDATA%\TVTestEpgRunner\config.toml
@@ -105,6 +118,9 @@ important ones:
 | `driver.channels` | Limit the pool to part of the channel list (`/epgcapturech` syntax). |
 | `priority.enabled` | Capture the stalest channels first instead of walking the whole list. |
 | `priority.use_addon` | Let the add-on's update times count as a capture. |
+| `server.enabled` | Serve the EPG share from this machine instead of Home Assistant. |
+| `server.api_port` / `server.ui_port` | Where TVTest connects, and where the web guide answers. |
+| `addon.url` | Where capture reports go — the add-on, or `http://127.0.0.1:8077` for the built-in server. |
 
 Starting at logon is not part of the configuration file — it is a registry
 entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, written

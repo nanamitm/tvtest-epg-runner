@@ -81,15 +81,20 @@ def main(argv=None):
     scheduler = Scheduler(config)
 
     if args.check:
+        # 読むだけなので、常駐中でも確かめられる
         return check(scheduler, config)
+
+    # 取得する経路はどれも1つに絞る。2つ動くと同じチューナーに TVTest が
+    # 二重に立ち、走行中の取得を両方が監視してしまう。
+    mutex = winevent.acquire_single_instance()
+    if mutex is None:
+        print(
+            "TVTest EPG Runner は既に起動しています。"
+            "トレイのメニューから操作してください。", file=sys.stderr)
+        return 1
 
     if args.once is not None:
         return run_once(scheduler, args.once)
-
-    mutex = winevent.acquire_single_instance()
-    if mutex is None:
-        print("TVTest EPG Runner は既に起動しています。", file=sys.stderr)
-        return 1
 
     from .syncserver import SyncServer
     from .ui.app import TrayApplication

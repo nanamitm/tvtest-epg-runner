@@ -21,7 +21,14 @@ VALUE_NAME = "TVTestEpgRunner"
 LAUNCHER = "run.pyw"
 
 
+def is_frozen():
+    return bool(getattr(sys, "frozen", False))
+
+
 def launcher_path():
+    """What the logon entry runs: the exe itself, or the launcher script."""
+    if is_frozen():
+        return os.path.abspath(sys.executable)
     package_dir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(os.path.dirname(package_dir), LAUNCHER)
 
@@ -38,6 +45,8 @@ def interpreter_path():
 
 
 def command():
+    if is_frozen():
+        return f'"{launcher_path()}"'
     return f'"{interpreter_path()}" "{launcher_path()}"'
 
 

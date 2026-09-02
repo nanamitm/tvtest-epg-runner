@@ -75,6 +75,17 @@ It is a logon entry rather than a service on purpose. The tray icon needs a
 desktop, and the event that cancels a capture lives in the session namespace,
 so the runner has to share a session with the TVTest it starts.
 
+## Packaging
+
+`pyinstaller tvtest_epg_runner.spec` builds `dist/TVTestEpgRunner`, a folder
+holding the executable and everything it needs — no Python installation on the
+target machine. Zip that folder to hand it to somebody.
+
+The sync server is imported by path rather than by name, so it cannot be
+found by analysis: the spec carries its sources as data and the code looks
+for them in the bundle. Enabling **start at logon** from a packaged build
+registers the executable itself rather than an interpreter and a script.
+
 ## Usage
 
 ```

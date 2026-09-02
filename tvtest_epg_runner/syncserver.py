@@ -15,10 +15,21 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-APP_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "thirdparty", "home-assistant-addons", "tvtest_epg_sync", "app",
-)
+# 配布用にひとつにまとめた場合、サーバのソースは展開先に置かれる
+BUNDLED_NAME = "epgsync"
+
+
+def _app_dir():
+    bundle = getattr(sys, "_MEIPASS", None)
+    if bundle:
+        return os.path.join(bundle, BUNDLED_NAME)
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "thirdparty", "home-assistant-addons", "tvtest_epg_sync", "app",
+    )
+
+
+APP_DIR = _app_dir()
 
 
 class SyncUnavailable(Exception):

@@ -132,7 +132,7 @@ class Scheduler:
 
     def _loop(self):
         self._set_state("待機中")
-        self.adopt_pending()
+        self._guard(self.adopt_pending)
         while not self._quit.is_set():
             timeout = max(1.0, (self.next_run - datetime.now()).total_seconds())
             self._wake.wait(timeout=min(timeout, 60))
@@ -145,11 +145,28 @@ class Scheduler:
                     if not self._requests:
                         break
                     requested = self._requests.pop(0)
-                self.run_round(requested, scheduled=False)
+                self._guard(self.run_round, requested, scheduled=False)
 
             if not self._quit.is_set() and datetime.now() >= self.next_run:
                 self.next_run = next_run_after(self.config, datetime.now())
-                self.run_round(None, scheduled=True)
+                self._guard(self.run_round, None, scheduled=True)
+
+    def _guard(self, call, *args, **kwargs):
+        """Run something without letting it take the scheduler down with it.
+
+        This thread is what makes the schedule happen. If it dies the tray
+        goes on saying it is waiting and nothing ever runs again, so a round
+        that fails has to fail on its own.
+        """
+        try:
+            return call(*args, **kwargs)
+        except Exception:  # noqa: BLE001 - 何が起きても巡回は続ける
+            logger.exception("番組表の取得でエラーが発生しました。")
+            self.busy = False
+            self._runners = []
+            self._active.clear()
+            self._set_state("待機中")
+            return None
 
     # -- one round -------------------------------------------------------
 
@@ -190,9 +207,18 @@ class Scheduler:
         results = []
         try:
             with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-                futures = [pool.submit(self._run_job, job) for job in jobs]
-                for future in futures:
-                    results.append(future.result())
+                futures = [(job, pool.submit(self._run_job, job)) for job in jobs]
+                for job, future in futures:
+                    try:
+                        results.append(future.result())
+                    except Exception as error:  # noqa: BLE001 - 1本の失敗で全体を止めない
+                        logger.exception("%s の取得に失敗しました。", job.label)
+                        results.append(CaptureResult(
+                            driver=job.driver.name,
+                            started=datetime.now(), finished=datetime.now(),
+                            exit_code=None, timeout=job.timeout,
+                            detail=f"エラーで終了しました: {error}",
+                        ))
         finally:
             self.busy = False
             self._runners = []

@@ -42,6 +42,8 @@ class TrayApplication:
             "running": make_icon(RUNNING),
             "failed": make_icon(FAILED),
         }
+        # 設定画面やメッセージにも同じ印を使う
+        self.app.setWindowIcon(self._icons["idle"])
 
         self.tray = QSystemTrayIcon(self._icons["idle"])
         self.tray.setToolTip("TVTest EPG Runner")

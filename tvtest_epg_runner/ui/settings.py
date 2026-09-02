@@ -26,6 +26,7 @@ from .. import config as config_module
 from ..edcb import EdcbClient, EdcbUnavailable, free_until
 from ..notify import STATUS_PATH
 from ..util import format_duration, parse_duration
+from .icons import IDLE, make_icon
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,9 @@ class SettingsDialog(QDialog):
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self.setWindowTitle("TVTest EPG Runner の設定")
-        self.resize(620, 520)
+        # トレイと同じ印を出す (単体で開かれた場合も含めて確実に付ける)
+        self.setWindowIcon(make_icon(IDLE))
+        self.resize(660, 560)
 
         self._config = config
         self._values = config_module.values_from(config)

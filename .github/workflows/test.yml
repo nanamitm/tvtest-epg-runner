@@ -21,6 +21,10 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Install dependencies
+        # 判断のロジックだけを見るので Qt は要らないが、
+        # EDCB とアドオンへの問い合わせが requests を掴んでいる
+        run: pip install requests
+
       - name: Test
-        # 判断のロジックだけを見るので、Qt もチューナーも要らない
         run: python -m unittest discover -s tests -v

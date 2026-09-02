@@ -344,6 +344,34 @@ class CaptureRunner:
         process.kill()
 
 
+# ランナーが頼りにしている取得オプション
+REQUIRED_OPTIONS = ("epgcapturech", "epgcapturereport")
+OPTIONAL_OPTIONS = ("epgcaptureidle", "epgcapturetimeout")
+
+
+def supported_options(exe):
+    """Which capture options this TVTest knows, read out of the executable.
+
+    TVTest ignores an option it does not know, so passing one to an older
+    build would leave the runner believing it captured particular channels
+    while TVTest walked the whole tuning space instead — the history would
+    then be a record of something that never happened. The option names sit
+    in the binary as wide strings, which is enough to tell.
+    """
+    try:
+        with open(exe, "rb") as file:
+            data = file.read()
+    except OSError as error:
+        logger.warning("TVTest を読めません: %s (%s)", exe, error)
+        return None
+
+    found = set()
+    for option in REQUIRED_OPTIONS + OPTIONAL_OPTIONS:
+        if option.encode("utf-16-le") in data:
+            found.add(option)
+    return found
+
+
 def read_report(path):
     """Read the lines TVTest appended for the channels it walked.
 

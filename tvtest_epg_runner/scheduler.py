@@ -17,7 +17,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from . import channels as channel_module
-from .capture import CaptureRequest, CaptureResult, CaptureRunner
+from .capture import (
+    REQUIRED_OPTIONS, CaptureRequest, CaptureResult, CaptureRunner,
+    supported_options,
+)
 from .edcb import EdcbClient, EdcbUnavailable, free_until
 from .history import CaptureHistory
 from .notify import AddonNotifier
@@ -88,6 +91,21 @@ class Scheduler:
         )
         self.history = CaptureHistory(config.history_file)
         self.notifier = AddonNotifier(config.addon) if config.addon.url else None
+        self._check_tvtest()
+
+    def _check_tvtest(self):
+        """Note whether this TVTest understands the options we rely on."""
+        options = supported_options(self.config.exe)
+        self.missing_options = (
+            [] if options is None else
+            [name for name in REQUIRED_OPTIONS if name not in options])
+
+        if self.missing_options:
+            logger.warning(
+                "この TVTest は %s に対応していません。"
+                "チャンネルを選んで取得することはできないため、"
+                "現在のチューニング空間をそのまま巡回します。",
+                " / ".join("/" + name for name in self.missing_options))
 
     def reconfigure(self, config):
         """Adopt settings saved from the dialog without restarting."""
@@ -293,7 +311,7 @@ class Scheduler:
             )
 
         buckets = self._share_out(driver, parallel, timeout, freshness)
-        if self.config.priority.enabled and not any(buckets):
+        if self.config.priority.enabled and not self.missing_options and not any(buckets):
             reason = "取得が新しいチャンネルばかりのため対象がありません"
             logger.info("%s をスキップします: %s", driver.name, reason)
             return [], CaptureResult(
@@ -317,8 +335,9 @@ class Scheduler:
 
     def _share_out(self, driver, parallel, timeout, freshness):
         """Pick the channels for this round and deal them across the tuners."""
-        if not self.config.priority.enabled:
-            # 優先順を使わないなら、対象の絞り込みは TVTest 側に任せる
+        if not self.config.priority.enabled or self.missing_options:
+            # 優先順を使わない場合と、TVTest が指定に対応していない場合は、
+            # 何を取ったかを記録できないので履歴も残さず TVTest に任せる
             return [[] for _ in range(parallel)]
 
         groups = self._groups_for(driver)

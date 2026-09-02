@@ -15,7 +15,7 @@ from datetime import datetime, time as clock_time, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tvtest_epg_runner import channels, config as config_module
+from tvtest_epg_runner import capture, channels, config as config_module
 from tvtest_epg_runner.edcb import Reservation, free_until
 from tvtest_epg_runner.history import CaptureHistory
 from tvtest_epg_runner.scheduler import next_run_after
@@ -219,6 +219,33 @@ class ScheduleTest(unittest.TestCase):
         config = self.config(every=3600)
         moment = datetime(2026, 9, 2, 10, 0)
         self.assertEqual(next_run_after(config, moment), datetime(2026, 9, 2, 11, 0))
+
+
+class TVTestFeatureTest(unittest.TestCase):
+    """オプションの有無を実行ファイルから読み取れること。"""
+
+    def write_exe(self, options):
+        path = os.path.join(tempfile.mkdtemp(), "TVTest.exe")
+        blob = b"MZ" + b"\x00" * 64
+        for option in options:
+            blob += option.encode("utf-16-le") + b"\x00\x00"
+        with open(path, "wb") as file:
+            file.write(blob)
+        return path
+
+    def test_finds_the_options(self):
+        exe = self.write_exe(["epgcapturech", "epgcapturereport", "epgcaptureidle"])
+        found = capture.supported_options(exe)
+        self.assertIn("epgcapturech", found)
+        self.assertIn("epgcaptureidle", found)
+        self.assertNotIn("epgcapturetimeout", found)
+
+    def test_an_older_build_offers_none(self):
+        exe = self.write_exe(["epgcapture", "recexit"])
+        self.assertEqual(capture.supported_options(exe), set())
+
+    def test_missing_file(self):
+        self.assertIsNone(capture.supported_options("nowhere.exe"))
 
 
 class ConfigTest(unittest.TestCase):

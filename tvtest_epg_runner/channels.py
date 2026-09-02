@@ -122,6 +122,14 @@ def _read_text(path):
         return data.decode("utf-16-be")
     if data.startswith(codecs.BOM_UTF8):
         return data.decode("utf-8-sig")
+
+    # 印の無い UTF-16 も読む。取り違えると1行も拾えず、ドライバが黙って
+    # 対象から外れてしまうため。
+    head = data[:512]
+    if head.count(b"\x00") > len(head) // 4:
+        return data.decode("utf-16-le" if head[1:2] == b"\x00" else "utf-16-be",
+                           errors="replace")
+
     try:
         return data.decode("utf-8")
     except UnicodeDecodeError:

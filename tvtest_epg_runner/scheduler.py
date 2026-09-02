@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -29,6 +30,9 @@ from .util import format_duration
 logger = logging.getLogger(__name__)
 
 STATE_PREFIX = "capture-"
+
+# 並列で走るジョブが同じ問い合わせを繰り返さないよう、少しだけ持ち回る
+EDCB_CACHE_SECONDS = 10
 
 
 def next_run_after(config, moment):
@@ -79,10 +83,15 @@ class Scheduler:
         self._runners = []
         self._adoptable = []
         self._lock = threading.Lock()
+        self._edcb_lock = threading.Lock()
+        self._edcb_cache = None
+        self._groups_cache = {}
         self._thread = None
 
     def _apply(self, config):
         self.config = config
+        self._edcb_cache = None
+        self._groups_cache = {}
         self.edcb = EdcbClient(
             config.edcb.url,
             timeout=config.edcb.timeout,
@@ -393,7 +402,18 @@ class Scheduler:
 
     def _groups_for(self, driver):
         path = channel_module.channel_file_for(self.config.exe, driver.name)
-        groups = channel_module.load_groups(path)
+        try:
+            stamp = os.path.getmtime(path)
+        except OSError:
+            stamp = 0
+
+        cached = self._groups_cache.get(driver.name)
+        if cached is not None and cached[0] == stamp:
+            groups = cached[1]
+        else:
+            groups = channel_module.load_groups(path)
+            self._groups_cache[driver.name] = (stamp, groups)
+
         if not groups:
             return []
         try:
@@ -427,10 +447,27 @@ class Scheduler:
 
     # -- EDCB ------------------------------------------------------------
 
+    def _reservations(self):
+        """The reservations, fetched at most once every few seconds.
+
+        Several jobs poll while they run, and each answer is a few hundred
+        kilobytes of XML describing the same reservations.
+        """
+        with self._edcb_lock:
+            now = time.monotonic()
+            if self._edcb_cache is not None:
+                stamp, value = self._edcb_cache
+                if now - stamp < EDCB_CACHE_SECONDS:
+                    return value
+
+            value = self.edcb.enum_tuner_reserve()
+            self._edcb_cache = (now, value)
+            return value
+
     def free_window(self, driver, moment, needed=1):
         """Seconds this driver keeps ``needed`` tuners free, None if unknown."""
         try:
-            reservations, counts = self.edcb.enum_tuner_reserve()
+            reservations, counts = self._reservations()
         except EdcbUnavailable as error:
             if self.config.edcb.required:
                 logger.warning("EDCB に問い合わせできません: %s", error)

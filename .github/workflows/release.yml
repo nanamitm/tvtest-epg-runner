@@ -1,0 +1,67 @@
+name: Build x64 Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # EPG 共有サーバはサブモジュールから同梱する
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build
+        run: pyinstaller --noconfirm --clean tvtest_epg_runner.spec
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $exe = "dist\TVTestEpgRunner\TVTestEpgRunner.exe"
+          if (-not (Test-Path $exe)) { throw "実行ファイルが生成されていません: $exe" }
+          $bundled = "dist\TVTestEpgRunner\_internal\epgsync\server.py"
+          if (-not (Test-Path $bundled)) { throw "EPG 共有サーバが同梱されていません" }
+
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") {
+            $env:GITHUB_REF_NAME -replace '[^A-Za-z0-9._-]', '-'
+          } else { "dev" }
+
+          $name = "TVTestEpgRunner-$version-windows-x64.zip"
+          Compress-Archive -Path "dist\TVTestEpgRunner\*" -DestinationPath $name -Force
+          "PACKAGE=$name" >> $env:GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: TVTestEpgRunner-windows-x64
+          path: ${{ env.PACKAGE }}
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ env.PACKAGE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

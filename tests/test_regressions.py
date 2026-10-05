@@ -85,6 +85,16 @@ class SchedulerRegressionTest(unittest.TestCase):
             self.scheduler._run_job(jobs[0])
         self.assertEqual(run.call_args.args[0].channels, '2:15')
 
+    def test_invalid_channel_limit_falls_back_to_all_channels(self):
+        self.config.priority.enabled = False
+        self.scheduler.free_window = lambda *args, **kwargs: (2400, None)
+        jobs, skipped = self.scheduler._plan(DriverConfig('D.dll', channels='2:x'))
+        self.assertIsNone(skipped)
+        with (patch.object(jobs[0].runner, 'run', return_value=Mock(ok=False, report=[])) as run,
+              self.assertLogs('tvtest_epg_runner.scheduler', 'WARNING')):
+            self.scheduler._run_job(jobs[0])
+        self.assertEqual(run.call_args.args[0].channels, '')
+
     def test_freshness_is_scoped_to_each_driver(self):
         self.config.drivers = [DriverConfig('A.dll'), DriverConfig('B.dll')]
         a = ChannelGroup(0, 0, [Service('A', 1, 1, 1)])
@@ -109,6 +119,19 @@ class ServerStartupTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             module = Mock()
             api = Mock()
+            module.make_server.side_effect = [api, OSError('port occupied')]
+            server = SyncServer(ServerConfig(enabled=True, data_dir=directory))
+            with patch('tvtest_epg_runner.syncserver.load_module', return_value=module):
+                self.assertFalse(server.start())
+            api.shutdown.assert_not_called()
+            api.server_close.assert_called_once()
+            self.assertFalse(server.running)
+
+    def test_close_error_during_failed_startup_is_contained(self):
+        with tempfile.TemporaryDirectory() as directory:
+            module = Mock()
+            api = Mock()
+            api.server_close.side_effect = OSError('close failed')
             module.make_server.side_effect = [api, OSError('port occupied')]
             server = SyncServer(ServerConfig(enabled=True, data_dir=directory))
             with patch('tvtest_epg_runner.syncserver.load_module', return_value=module):

@@ -261,7 +261,7 @@ class Scheduler:
                 exe=self.config.exe,
                 extra_args=self.config.extra_args,
                 channels=(channel_module.to_spec(job.groups) if job.groups else
-                          job.driver.channels if not self.missing_options else ""),
+                          self._fallback_channels(job.driver)),
                 channel_count=len(job.groups),
                 idle=job.driver.idle,
                 report_path=self._report_path(job.driver.name, job.index),
@@ -277,6 +277,18 @@ class Scheduler:
             return result
         finally:
             self._deactivate(job.label)
+
+    def _fallback_channels(self, driver):
+        """The /epgcapturech range when no channels were picked for the job."""
+        if self.missing_options or not driver.channels:
+            return ""
+        try:
+            channel_module.parse_spec(driver.channels)
+        except ValueError as error:
+            # 優先順を使う場合と同じく、不正な指定なら全チャンネルを対象にする
+            logger.warning("%s のチャンネル指定が不正です: %s", driver.name, error)
+            return ""
+        return driver.channels
 
     def _record(self, job, result):
         """Fold what happened back into the history."""

@@ -107,9 +107,7 @@ class SyncServer:
                     module.make_server(self.config.ui_port, context, False))
         except OSError as error:
             logger.error("EPG 共有サーバを開始できません: %s", error)
-            # serve_forever has not started; shutdown would wait forever.
-            for server in servers:
-                server.server_close()
+            self._close(servers, started=False)
             return False
 
         self._module = module
@@ -161,10 +159,12 @@ class SyncServer:
         self.start()
 
     @staticmethod
-    def _close(servers):
+    def _close(servers, started=True):
         for server in servers:
             try:
-                server.shutdown()
+                if started:
+                    # serve_forever を始める前に shutdown すると戻ってこない
+                    server.shutdown()
                 server.server_close()
             except Exception:  # noqa: BLE001 - 停止処理で落ちても意味がない
                 logger.debug("サーバの停止に失敗しました。", exc_info=True)

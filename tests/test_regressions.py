@@ -10,6 +10,20 @@ from tvtest_epg_runner.config import Config, DriverConfig
 from tvtest_epg_runner.scheduler import Scheduler
 from tvtest_epg_runner.edcb import Reservation
 from tvtest_epg_runner.channels import ChannelGroup, Service
+from tvtest_epg_runner.util import format_arguments, parse_arguments
+
+
+class ArgumentEditingTest(unittest.TestCase):
+    def test_windows_arguments_round_trip(self):
+        arguments = ['/log', '/logfile', 'C:\\TVTest Data\\capture.log',
+                     'C:\\folder with spaces\\', '', 'a"quoted"value',
+                     '日本語 パス', 'C:\\plain\\file.txt']
+        self.assertEqual(parse_arguments(format_arguments(arguments)), arguments)
+
+    def test_quoted_path_and_empty_editor(self):
+        self.assertEqual(parse_arguments('/logfile "C:\\TVTest Data\\capture.log"'),
+                         ['/logfile', 'C:\\TVTest Data\\capture.log'])
+        self.assertEqual(parse_arguments(''), [])
 
 
 class SchedulerRegressionTest(unittest.TestCase):

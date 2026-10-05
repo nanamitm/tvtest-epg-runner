@@ -26,7 +26,7 @@ from .. import channels
 from .. import config as config_module
 from ..edcb import EdcbClient, EdcbUnavailable, free_until
 from ..notify import STATUS_PATH
-from ..util import format_duration, parse_duration
+from ..util import format_arguments, format_duration, parse_arguments, parse_duration
 from .icons import IDLE, make_icon
 
 logger = logging.getLogger(__name__)
@@ -91,6 +91,7 @@ class SettingsDialog(QDialog):
 
         self.args_edit = QLineEdit()
         self.args_edit.setPlaceholderText("/log")
+        self.args_edit.setToolTip('空白を含む引数は二重引用符で囲みます。例: /logfile "C:\\TVTest Data\\capture.log"')
         form.addRow("追加の引数", self.args_edit)
         form.addRow("", QLabel("/epgcaptureexit と /epgcapturetimeout は自動で付きます。"))
 
@@ -524,7 +525,7 @@ class SettingsDialog(QDialog):
     def _load_values(self):
         values = self._values
         self.exe_edit.setText(values["exe"])
-        self.args_edit.setText(" ".join(values["extra_args"]))
+        self.args_edit.setText(format_arguments(values["extra_args"]))
         self.log_level.setCurrentText(values["log_level"])
         self.log_file_edit.setText(values["log_file"])
         self.autostart_check.setChecked(autostart.is_enabled())
@@ -585,7 +586,7 @@ class SettingsDialog(QDialog):
 
         return {
             "exe": self.exe_edit.text().strip(),
-            "extra_args": self.args_edit.text().split(),
+            "extra_args": parse_arguments(self.args_edit.text()),
             "drivers": self._read_drivers(),
             "times": times if use_times else [],
             "every": "" if use_times else self.every_edit.text().strip(),

@@ -3,7 +3,36 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from datetime import timedelta
+
+
+def format_arguments(arguments):
+    """Render an argument list using Windows command-line quoting."""
+    return subprocess.list2cmdline(arguments)
+
+
+def parse_arguments(text):
+    """Read Windows quoting without treating path backslashes as escapes."""
+    import ctypes
+    from ctypes import wintypes
+
+    shell32 = ctypes.WinDLL('shell32', use_last_error=True)
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    shell32.CommandLineToArgvW.argtypes = (wintypes.LPCWSTR,
+                                         ctypes.POINTER(ctypes.c_int))
+    shell32.CommandLineToArgvW.restype = ctypes.POINTER(wintypes.LPWSTR)
+    kernel32.LocalFree.argtypes = (wintypes.HLOCAL,)
+    kernel32.LocalFree.restype = wintypes.HLOCAL
+    count = ctypes.c_int()
+    # argv[0] follows different quoting rules; prepend a disposable name.
+    argv = shell32.CommandLineToArgvW('runner ' + text, ctypes.byref(count))
+    if not argv:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        return [argv[index] for index in range(1, count.value)]
+    finally:
+        kernel32.LocalFree(ctypes.cast(argv, wintypes.HLOCAL))
 
 _DURATION_RE = re.compile(r"(\d+)\s*([hms]?)", re.IGNORECASE)
 _DURATION_FULL_RE = re.compile(r"(?:\s*\d+\s*[hms]?\s*)+", re.IGNORECASE)

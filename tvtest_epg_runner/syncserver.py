@@ -107,7 +107,9 @@ class SyncServer:
                     module.make_server(self.config.ui_port, context, False))
         except OSError as error:
             logger.error("EPG 共有サーバを開始できません: %s", error)
-            self._close(servers)
+            # serve_forever has not started; shutdown would wait forever.
+            for server in servers:
+                server.server_close()
             return False
 
         self._module = module

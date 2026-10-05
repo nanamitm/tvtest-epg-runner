@@ -95,6 +95,30 @@ class SchedulerRegressionTest(unittest.TestCase):
             self.scheduler._run_job(jobs[0])
         self.assertEqual(run.call_args.args[0].channels, '')
 
+    def _check_with(self, missing, priority):
+        self.config.priority.enabled = priority
+        self.config.drivers = [DriverConfig('A.dll', instances=2),
+                               DriverConfig('B.dll', instances=1),
+                               DriverConfig('C.dll', instances=3, enabled=False)]
+        options = set(capture.REQUIRED_OPTIONS) - set(missing)
+        with patch('tvtest_epg_runner.scheduler.supported_options', return_value=options):
+            self.scheduler._check_tvtest()
+
+    def test_redundant_parallel_is_reported(self):
+        for missing, priority in (((), False), (capture.REQUIRED_OPTIONS, True)):
+            with (self.subTest(missing=missing, priority=priority),
+                  self.assertLogs('tvtest_epg_runner.scheduler', 'WARNING') as logs):
+                self._check_with(missing, priority)
+            redundant = [line for line in logs.output if '同時 2 本以上' in line]
+            self.assertEqual(len(redundant), 1)
+            self.assertIn('A.dll', redundant[0])
+            self.assertNotIn('B.dll', redundant[0])
+            self.assertNotIn('C.dll', redundant[0])
+
+    def test_parallel_with_priority_is_not_reported(self):
+        with self.assertNoLogs('tvtest_epg_runner.scheduler', 'WARNING'):
+            self._check_with((), True)
+
     def test_freshness_is_scoped_to_each_driver(self):
         self.config.drivers = [DriverConfig('A.dll'), DriverConfig('B.dll')]
         a = ChannelGroup(0, 0, [Service('A', 1, 1, 1)])

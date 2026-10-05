@@ -116,6 +116,18 @@ class Scheduler:
                 "現在のチューニング空間をそのまま巡回します。",
                 " / ".join("/" + name for name in self.missing_options))
 
+        # チャンネルを分担できないと、並列の各本が同じチャンネルを取りに行くだけになる
+        if not self.config.priority.enabled or self.missing_options:
+            redundant = [driver.name for driver in self.config.enabled_drivers
+                         if driver.instances > 1]
+            if redundant:
+                logger.warning(
+                    "%s は同時 2 本以上ですが、チャンネルを分担できないため"
+                    "各本が同じチャンネルを取得します。%s",
+                    ", ".join(redundant),
+                    "同時本数を 1 にしてください。" if self.missing_options else
+                    "優先順の取得を有効にするか、同時本数を 1 にしてください。")
+
     def reconfigure(self, config):
         """Adopt settings saved from the dialog without restarting."""
         self._apply(config)

@@ -652,6 +652,19 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, "設定", str(error))
             return
 
+        redundant = [driver["name"] for driver in values["drivers"]
+                     if driver["enabled"] and driver["instances"] > 1]
+        if redundant and not values["priority"]["enabled"]:
+            answer = QMessageBox.question(
+                self, "設定",
+                f"{', '.join(redundant)} は同時 2 本以上ですが、優先順の取得が無効のため"
+                "チャンネルを分担できず、各本が同じチャンネルを取得します。\n"
+                "並列で取得するなら優先順の取得を有効にしてください。\n\n"
+                "このまま保存しますか？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if answer != QMessageBox.Yes:
+                return
+
         try:
             self.saved_config = config_module.save(values, self._config.path)
         except config_module.ConfigError as error:

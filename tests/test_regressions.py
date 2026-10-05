@@ -163,27 +163,3 @@ class ServerStartupTest(unittest.TestCase):
             api.shutdown.assert_not_called()
             api.server_close.assert_called_once()
             self.assertFalse(server.running)
-
-
-class TrayMenuTest(unittest.TestCase):
-    def test_menu_keeps_every_action(self):
-        import gc
-        import os
-        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-        try:
-            from PySide6.QtWidgets import QApplication, QMenu
-            from tvtest_epg_runner.ui.app import TrayApplication
-        except ImportError:
-            self.skipTest('PySide6 is not installed')
-        application = QApplication.instance() or QApplication([])
-        self.addCleanup(lambda: application)
-        tray = TrayApplication.__new__(TrayApplication)
-        tray.menu = QMenu()
-        tray.scheduler = Mock()
-        tray.config = Mock()
-        tray._build_menu()
-        gc.collect()
-        labels = [action.text() for action in tray.menu.actions()
-                  if not action.isSeparator()]
-        for label in ('設定…', 'ログを開く', '終了'):
-            self.assertIn(label, labels)

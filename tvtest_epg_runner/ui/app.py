@@ -196,6 +196,14 @@ class TrayApplication:
         QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.abspath(path)))
 
     def _quit(self):
+        if self.scheduler.running:
+            # 長い取得を誤って打ち切らないよう、取得中だけ確かめる
+            answer = QMessageBox.question(
+                self.dialog, "TVTest EPG Runner",
+                "番組表の取得中です。終了すると取得を中止します。\n\n終了しますか？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if answer != QMessageBox.Yes:
+                return
         logger.info("終了します。")
         self.tray.hide()
         self.scheduler.stop()

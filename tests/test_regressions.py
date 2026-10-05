@@ -51,6 +51,16 @@ class SchedulerRegressionTest(unittest.TestCase):
             self.scheduler.adopt_pending()
         watchdog.assert_called_once_with('D.dll', 2, 0)
 
+    def test_older_tvtest_still_launches_fallback_capture(self):
+        self.scheduler.missing_options = list(capture.REQUIRED_OPTIONS)
+        self.scheduler.free_window = lambda *args, **kwargs: (2400, None)
+        jobs, skipped = self.scheduler._plan(DriverConfig('D.dll', instances=2))
+        self.assertIsNone(skipped)
+        self.assertEqual(len(jobs), 2)
+        with patch.object(jobs[0].runner, 'run', return_value=Mock(ok=False, report=[])) as run:
+            self.scheduler._run_job(jobs[0])
+        self.assertEqual(run.call_args.args[0].channels, '')
+
 
 class ServerStartupTest(unittest.TestCase):
     def test_second_port_failure_closes_unstarted_server(self):

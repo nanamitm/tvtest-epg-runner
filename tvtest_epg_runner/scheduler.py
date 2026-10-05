@@ -330,7 +330,7 @@ class Scheduler:
 
         jobs = []
         for index, groups in enumerate(buckets, start=1):
-            if not groups and self.config.priority.enabled:
+            if not groups and self.config.priority.enabled and not self.missing_options:
                 continue
             jobs.append(Job(
                 driver=driver, index=index, parallel=len(buckets), timeout=timeout,

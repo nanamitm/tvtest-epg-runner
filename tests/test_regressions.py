@@ -1,9 +1,55 @@
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
 from tvtest_epg_runner.config import ServerConfig
 from tvtest_epg_runner.syncserver import SyncServer
+from tvtest_epg_runner import capture
+from tvtest_epg_runner.config import Config, DriverConfig
+from tvtest_epg_runner.scheduler import Scheduler
+from tvtest_epg_runner.edcb import Reservation
+
+
+class SchedulerRegressionTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.config = Config(exe='unused', every=3600,
+                             state_dir=self.directory.name)
+        with patch('tvtest_epg_runner.scheduler.supported_options',
+                   return_value=set(capture.REQUIRED_OPTIONS)):
+            self.scheduler = Scheduler(self.config)
+
+    def test_adopted_captures_release_tuner_for_recording(self):
+        now = datetime.now()
+        reservation = Reservation('1', 'recording', now - timedelta(seconds=1),
+                                  now + timedelta(hours=1), '0', 'D.dll')
+        self.scheduler._reservations = lambda: ([reservation], {'D.dll': 2})
+        reasons = []
+        def adopt(entry, watchdog):
+            reasons.append(watchdog(0))
+            return capture.CaptureResult('D.dll', now, now, 0, 2400)
+        self.scheduler._adoptable = [
+            (Mock(state_path=f'capture-D.dll-{index}.json', adopt=adopt),
+             (None, capture.CaptureRequest('D.dll', 2400, 'unused'), now))
+            for index in (1, 2)
+        ]
+        self.scheduler.adopt_pending()
+        self.assertEqual(sum(reason is not None for reason in reasons), 1)
+
+    def test_surviving_second_capture_keeps_its_position(self):
+        now = datetime.now()
+        runner = Mock(state_path='capture-D.dll-2.json')
+        def adopt(entry, watchdog):
+            watchdog(0)
+            return capture.CaptureResult('D.dll', now, now, 0, 2400)
+        runner.adopt = adopt
+        self.scheduler._adoptable = [(runner, (None,
+            capture.CaptureRequest('D.dll', 2400, 'unused'), now))]
+        with patch.object(self.scheduler, '_watchdog', return_value=None) as watchdog:
+            self.scheduler.adopt_pending()
+        watchdog.assert_called_once_with('D.dll', 2, 0)
 
 
 class ServerStartupTest(unittest.TestCase):

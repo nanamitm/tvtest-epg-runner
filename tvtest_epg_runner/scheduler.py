@@ -538,12 +538,19 @@ class Scheduler:
         try:
             with ThreadPoolExecutor(max_workers=len(adoptable)) as pool:
                 futures = []
+                driver_indexes = {}
                 for runner, entry in adoptable:
                     driver = entry[1].driver
+                    driver_indexes[driver] = driver_indexes.get(driver, 0) + 1
+                    # State filenames retain the original parallel position,
+                    # including gaps when only some captures survived.
+                    match = re.search(r"-(\d+)\.json$", runner.state_path)
+                    index = int(match.group(1)) if match else driver_indexes[driver]
                     self._activate(f"{driver} (引き継ぎ)")
                     futures.append(pool.submit(
                         runner.adopt, entry,
-                        lambda elapsed, name=driver: self._watchdog(name, 1, elapsed)))
+                        lambda elapsed, name=driver, position=index:
+                        self._watchdog(name, position, elapsed)))
                 for future in futures:
                     result = future.result()
                     self.history.apply_report(result.driver, result.report)

@@ -73,37 +73,38 @@ class TrayApplication:
     # -- メニュー ----------------------------------------------------------
 
     def _build_menu(self):
-        self.status_action = QAction("")
+        # 親を持たない QAction は関数を抜けると解放され、メニューから消える
+        self.status_action = QAction("", self.menu)
         self.status_action.setEnabled(False)
         self.menu.addAction(self.status_action)
         self.menu.addSeparator()
 
-        self.run_action = QAction("今すぐ取得")
+        self.run_action = QAction("今すぐ取得", self.menu)
         self.run_action.triggered.connect(lambda: self.scheduler.request_round())
         self.menu.addAction(self.run_action)
 
         self.driver_menu = self.menu.addMenu("ドライバを指定して取得")
-        self.cancel_action = QAction("取得を中止")
+        self.cancel_action = QAction("取得を中止", self.menu)
         self.cancel_action.triggered.connect(self.scheduler.cancel_current)
         self.menu.addAction(self.cancel_action)
 
         self.menu.addSeparator()
         self.results_menu = self.menu.addMenu("前回の結果")
 
-        self.guide_action = QAction("番組表を開く")
+        self.guide_action = QAction("番組表を開く", self.menu)
         self.guide_action.triggered.connect(self._open_guide)
         self.menu.addAction(self.guide_action)
 
-        settings_action = QAction("設定…")
+        settings_action = QAction("設定…", self.menu)
         settings_action.triggered.connect(self.open_settings)
         self.menu.addAction(settings_action)
 
-        log_action = QAction("ログを開く")
+        log_action = QAction("ログを開く", self.menu)
         log_action.triggered.connect(lambda: self._open(self.config.log_file))
         self.menu.addAction(log_action)
 
         self.menu.addSeparator()
-        quit_action = QAction("終了")
+        quit_action = QAction("終了", self.menu)
         quit_action.triggered.connect(self._quit)
         self.menu.addAction(quit_action)
 

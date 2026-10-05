@@ -61,6 +61,15 @@ class SchedulerRegressionTest(unittest.TestCase):
             self.scheduler._run_job(jobs[0])
         self.assertEqual(run.call_args.args[0].channels, '')
 
+    def test_channel_limit_survives_disabled_priority(self):
+        self.config.priority.enabled = False
+        self.scheduler.free_window = lambda *args, **kwargs: (2400, None)
+        jobs, skipped = self.scheduler._plan(DriverConfig('D.dll', channels='2:15'))
+        self.assertIsNone(skipped)
+        with patch.object(jobs[0].runner, 'run', return_value=Mock(ok=False, report=[])) as run:
+            self.scheduler._run_job(jobs[0])
+        self.assertEqual(run.call_args.args[0].channels, '2:15')
+
 
 class ServerStartupTest(unittest.TestCase):
     def test_second_port_failure_closes_unstarted_server(self):

@@ -260,7 +260,8 @@ class Scheduler:
                 timeout=job.timeout,
                 exe=self.config.exe,
                 extra_args=self.config.extra_args,
-                channels=channel_module.to_spec(job.groups) if job.groups else "",
+                channels=(channel_module.to_spec(job.groups) if job.groups else
+                          job.driver.channels if not self.missing_options else ""),
                 channel_count=len(job.groups),
                 idle=job.driver.idle,
                 report_path=self._report_path(job.driver.name, job.index),

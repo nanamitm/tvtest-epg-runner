@@ -113,7 +113,7 @@ class CaptureHistory:
     def order(self, driver, groups, freshness=None):
         """The groups, least recently touched first.
 
-        ``freshness`` maps a group key to a time the data was refreshed by
+        ``freshness`` maps (driver name, group key) to a time the data was refreshed by
         someone else — the add-on's view of the LAN — and counts the same as
         having captured it then.
         """
@@ -121,7 +121,7 @@ class CaptureHistory:
 
         def key(group):
             seen = self.attempted_at(driver, group)
-            elsewhere = freshness.get(group.key, DISTANT_PAST)
+            elsewhere = freshness.get((driver, group.key), DISTANT_PAST)
             return (max(seen, elsewhere), group.space, group.channel)
 
         return sorted(groups, key=key)

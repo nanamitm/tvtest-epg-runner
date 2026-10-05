@@ -443,7 +443,7 @@ class Scheduler:
                 ]
                 if times:
                     # まとまりの中で一番古いサービスに合わせる
-                    freshness[group.key] = min(times)
+                    freshness[(driver.name, group.key)] = min(times)
         return freshness
 
     # -- EDCB ------------------------------------------------------------

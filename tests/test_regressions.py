@@ -9,6 +9,7 @@ from tvtest_epg_runner import capture
 from tvtest_epg_runner.config import Config, DriverConfig
 from tvtest_epg_runner.scheduler import Scheduler
 from tvtest_epg_runner.edcb import Reservation
+from tvtest_epg_runner.channels import ChannelGroup, Service
 
 
 class SchedulerRegressionTest(unittest.TestCase):
@@ -69,6 +70,24 @@ class SchedulerRegressionTest(unittest.TestCase):
         with patch.object(jobs[0].runner, 'run', return_value=Mock(ok=False, report=[])) as run:
             self.scheduler._run_job(jobs[0])
         self.assertEqual(run.call_args.args[0].channels, '2:15')
+
+    def test_freshness_is_scoped_to_each_driver(self):
+        self.config.drivers = [DriverConfig('A.dll'), DriverConfig('B.dll')]
+        a = ChannelGroup(0, 0, [Service('A', 1, 1, 1)])
+        b = ChannelGroup(0, 0, [Service('B', 2, 2, 2)])
+        other = ChannelGroup(0, 1, [Service('other', 3, 3, 3)])
+        self.scheduler._groups_for = lambda driver: [a] if driver.name == 'A.dll' else [b]
+        now = datetime.now()
+        old = now - timedelta(days=2)
+        self.scheduler.notifier = Mock()
+        self.scheduler.notifier.fetch_service_times.return_value = {
+            (1, 1, 1): old, (2, 2, 2): now}
+        freshness = self.scheduler._addon_freshness()
+        self.assertEqual(freshness[('A.dll', '0:0')], old)
+        self.assertEqual(freshness[('B.dll', '0:0')], now)
+        self.scheduler.history.mark_attempted('A.dll', [other], now - timedelta(days=1))
+        self.assertEqual(self.scheduler.history.order('A.dll', [a, other], freshness),
+                         [a, other])
 
 
 class ServerStartupTest(unittest.TestCase):

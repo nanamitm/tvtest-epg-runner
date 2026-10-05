@@ -131,7 +131,7 @@ class HistoryTest(unittest.TestCase):
     def test_addon_freshness_counts(self):
         now = datetime.now()
         # ローカルには履歴が無くても、他所で更新済みなら後回しになる
-        freshness = {self.groups[0].key: now}
+        freshness = {('d', self.groups[0].key): now}
         ordered = self.history.order("d", self.groups, freshness)
         self.assertEqual(ordered[-1].key, self.groups[0].key)
 

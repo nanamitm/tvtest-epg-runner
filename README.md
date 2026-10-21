@@ -137,7 +137,7 @@ Starting at logon is not part of the configuration file — it is a registry
 entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, written
 and removed by the checkbox.
 | `edcb.guard` | Stop this long before a recording starts (EDCB's own `NGEpgCapTime` is the same idea). |
-| `edcb.required` | With `true`, no capture runs while EpgTimerSrv cannot be reached. |
+| `edcb.required` | With `true`, no capture runs while EpgTimerSrv cannot be reached. A local EpgTimerSrv that is not running at all does not count: nothing is recording, so captures run unrestricted. |
 | `schedule.times` / `schedule.every` | Daily times, or a fixed interval. |
 
 A driver EDCB does not know about is never held back — it simply runs with its

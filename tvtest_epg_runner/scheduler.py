@@ -85,6 +85,7 @@ class Scheduler:
         self._lock = threading.Lock()
         self._edcb_lock = threading.Lock()
         self._edcb_cache = None
+        self._edcb_stopped = False
         self._groups_cache = {}
         self._thread = None
 
@@ -494,12 +495,20 @@ class Scheduler:
         try:
             reservations, counts = self._reservations()
         except EdcbUnavailable as error:
+            if self.edcb.is_stopped():
+                # EpgTimerSrv が動いていなければ録画も無いので、空きを気にせず取得する
+                if not self._edcb_stopped:
+                    logger.info("EDCB が起動していないため、予約を確認せずに取得します。")
+                    self._edcb_stopped = True
+                return None, None
+            self._edcb_stopped = False
             if self.config.edcb.required:
                 logger.warning("EDCB に問い合わせできません: %s", error)
                 return 0, None
             logger.debug("EDCB に問い合わせできません: %s", error)
             return None, None
 
+        self._edcb_stopped = False
         if driver not in counts:
             logger.debug("%s は EDCB に登録されていません。", driver)
             return None, None

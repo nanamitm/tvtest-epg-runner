@@ -50,6 +50,7 @@ poll = "30s"
 default_start_margin = "30s"
 default_end_margin = "30s"
 # true にすると、EDCB に問い合わせできないときは取得しません。
+# (このPCの EpgTimerSrv が起動していないときは録画も無いので、そのまま取得します)
 required = true
 
 [server]

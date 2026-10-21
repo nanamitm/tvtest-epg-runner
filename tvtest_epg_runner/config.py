@@ -257,6 +257,7 @@ timeout = {edcb_timeout}
 default_start_margin = {edcb_start_margin}
 default_end_margin = {edcb_end_margin}
 # true にすると、EDCB に問い合わせできないときは取得しません。
+# (このPCの EpgTimerSrv が起動していないときは録画も無いので、そのまま取得します)
 required = {edcb_required}
 
 [server]

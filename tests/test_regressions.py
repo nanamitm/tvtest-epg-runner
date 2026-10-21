@@ -8,7 +8,7 @@ from tvtest_epg_runner.syncserver import SyncServer
 from tvtest_epg_runner import capture
 from tvtest_epg_runner.config import Config, DriverConfig
 from tvtest_epg_runner.scheduler import Scheduler
-from tvtest_epg_runner.edcb import Reservation
+from tvtest_epg_runner.edcb import EdcbClient, EdcbUnavailable, Reservation
 from tvtest_epg_runner.channels import ChannelGroup, Service
 from tvtest_epg_runner.util import format_arguments, parse_arguments
 
@@ -65,6 +65,34 @@ class SchedulerRegressionTest(unittest.TestCase):
         with patch.object(self.scheduler, '_watchdog', return_value=None) as watchdog:
             self.scheduler.adopt_pending()
         watchdog.assert_called_once_with('D.dll', 2, 0)
+
+    def test_capture_runs_while_edcb_is_stopped(self):
+        self.config.priority.enabled = False
+        self.config.edcb.required = True
+        self.scheduler._reservations = Mock(side_effect=EdcbUnavailable('refused'))
+        with patch.object(self.scheduler.edcb, 'is_stopped', return_value=True):
+            jobs, skipped = self.scheduler._plan(DriverConfig('D.dll', timeout=2400))
+        self.assertIsNone(skipped)
+        self.assertEqual(jobs[0].timeout, 2400)
+
+    def test_unreachable_running_edcb_still_blocks_when_required(self):
+        self.config.edcb.required = True
+        self.scheduler._reservations = Mock(side_effect=EdcbUnavailable('timeout'))
+        with (patch.object(self.scheduler.edcb, 'is_stopped', return_value=False),
+              self.assertLogs('tvtest_epg_runner.scheduler', 'WARNING')):
+            jobs, skipped = self.scheduler._plan(DriverConfig('D.dll'))
+        self.assertEqual(jobs, [])
+        self.assertIsNotNone(skipped)
+
+    def test_edcb_stopped_only_judged_for_local_server(self):
+        with patch('tvtest_epg_runner.edcb._process_names', return_value={'explorer.exe'}):
+            self.assertTrue(EdcbClient('http://127.0.0.1:5510').is_stopped())
+            self.assertFalse(EdcbClient('http://192.168.1.2:5510').is_stopped())
+        with patch('tvtest_epg_runner.edcb._process_names',
+                   return_value={'epgtimersrv.exe'}):
+            self.assertFalse(EdcbClient('http://localhost:5510').is_stopped())
+        with patch('tvtest_epg_runner.edcb._process_names', return_value=None):
+            self.assertFalse(EdcbClient('http://127.0.0.1:5510').is_stopped())
 
     def test_older_tvtest_still_launches_fallback_capture(self):
         self.scheduler.missing_options = list(capture.REQUIRED_OPTIONS)

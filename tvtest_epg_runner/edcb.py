@@ -7,16 +7,21 @@ tuner instance, so a driver with several instances can still lend one out.
 
 from __future__ import annotations
 
+import ctypes
 import logging
+import sys
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 
 import requests
 
 logger = logging.getLogger(__name__)
 
 UNASSIGNED_TUNER_ID = "-1"
+SERVER_PROCESS = "epgtimersrv.exe"
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 @dataclass(frozen=True)
@@ -45,6 +50,18 @@ class EdcbClient:
         self.timeout = timeout
         self.default_start_margin = default_start_margin
         self.default_end_margin = default_end_margin
+
+    def is_stopped(self):
+        """True only when EpgTimerSrv is known not to be running.
+
+        Without EpgTimerSrv nothing is recording, so every tuner is free.  This
+        can only be told for a server on this machine; for anything else, or
+        when the process list cannot be read, the answer is False.
+        """
+        if (urlsplit(self.url).hostname or "").lower() not in LOCAL_HOSTS:
+            return False
+        names = _process_names()
+        return names is not None and SERVER_PROCESS not in names
 
     def enum_tuner_reserve(self):
         """Return (reservations, tuner_counts).
@@ -143,6 +160,48 @@ def free_until(reservations, tuner_count, driver, since, guard=0, horizon=24 * 3
             return max(0, seconds), candidate
 
     return max(0, horizon - guard), None
+
+
+class _ProcessEntry(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", ctypes.c_ulong),
+        ("cntUsage", ctypes.c_ulong),
+        ("th32ProcessID", ctypes.c_ulong),
+        ("th32DefaultHeapID", ctypes.c_size_t),
+        ("th32ModuleID", ctypes.c_ulong),
+        ("cntThreads", ctypes.c_ulong),
+        ("th32ParentProcessID", ctypes.c_ulong),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", ctypes.c_ulong),
+        ("szExeFile", ctypes.c_wchar * 260),
+    ]
+
+
+def _process_names():
+    """Lower-cased executable names of the running processes, None if unknown."""
+    if sys.platform != "win32":
+        return None
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+    kernel32.CreateToolhelp32Snapshot.argtypes = [ctypes.c_ulong, ctypes.c_ulong]
+    kernel32.Process32FirstW.argtypes = [ctypes.c_void_p, ctypes.POINTER(_ProcessEntry)]
+    kernel32.Process32NextW.argtypes = [ctypes.c_void_p, ctypes.POINTER(_ProcessEntry)]
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    if snapshot is None or snapshot == ctypes.c_void_p(-1).value:
+        return None
+    try:
+        entry = _ProcessEntry()
+        entry.dwSize = ctypes.sizeof(_ProcessEntry)
+        names = set()
+        found = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
+        while found:
+            names.add(entry.szExeFile.lower())
+            found = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+        return names or None
+    finally:
+        kernel32.CloseHandle(snapshot)
 
 
 def _text(element, name, default=""):

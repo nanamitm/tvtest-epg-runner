@@ -356,7 +356,7 @@ class SettingsDialog(QDialog):
         self.edcb_end_margin = QLineEdit()
         form.addRow("既定の終了マージン", self.edcb_end_margin)
 
-        self.edcb_required = QCheckBox("EDCB に問い合わせできないときは取得しない")
+        self.edcb_required = QCheckBox("EDCB に問い合わせできないときは EPG を取得しない")
         form.addRow("", self.edcb_required)
 
         test = QPushButton("接続を確認")

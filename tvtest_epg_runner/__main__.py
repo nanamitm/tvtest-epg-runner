@@ -126,7 +126,9 @@ def check(scheduler, config):
         window, blocker = scheduler.free_window(
             driver.name, now, needed=driver.instances)
         state = "有効" if driver.enabled else "無効"
-        if window is None:
+        if not config.edcb.enabled:
+            free = "EDCB 確認なし"
+        elif window is None:
             free = "EDCB 管理外"
         elif window <= 0:
             free = "空きなし"

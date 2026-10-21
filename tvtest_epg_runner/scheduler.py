@@ -492,6 +492,8 @@ class Scheduler:
 
     def free_window(self, driver, moment, needed=1):
         """Seconds this driver keeps ``needed`` tuners free, None if unknown."""
+        if not self.config.edcb.enabled:
+            return None, None
         try:
             reservations, counts = self._reservations()
         except EdcbUnavailable as error:

@@ -270,7 +270,7 @@ class ConfigTest(unittest.TestCase):
             "run_at_start": False,
             "priority": {"enabled": True, "use_addon": True,
                          "reserve": "2m", "min_age": "6h"},
-            "edcb": {"url": "http://127.0.0.1:5510", "guard": "10m",
+            "edcb": {"enabled": False, "url": "http://127.0.0.1:5510", "guard": "10m",
                      "poll": "30s", "timeout": "10s",
                      "default_start_margin": "30s", "default_end_margin": "30s",
                      "required": True},
@@ -292,6 +292,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(saved.drivers[0].channels, "2:*")
         self.assertEqual(saved.priority.min_age, 6 * 3600)
         self.assertTrue(saved.server.enabled)
+        self.assertFalse(saved.edcb.enabled)
         self.assertEqual(saved.times[0].hour, 4)
 
         # 読み書きを繰り返しても値が変わらない

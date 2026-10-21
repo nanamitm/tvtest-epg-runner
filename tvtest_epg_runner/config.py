@@ -27,6 +27,7 @@ class DriverConfig:
 
 @dataclass
 class EdcbConfig:
+    enabled: bool = True
     url: str = "http://127.0.0.1:5510"
     guard: int = 10 * 60
     poll: int = 30
@@ -140,6 +141,7 @@ def load(path=None):
 
     edcb_data = data.get("edcb", {})
     edcb = EdcbConfig(
+        enabled=bool(edcb_data.get("enabled", True)),
         url=edcb_data.get("url", EdcbConfig.url),
         guard=parse_duration(edcb_data.get("guard"), EdcbConfig.guard),
         poll=parse_duration(edcb_data.get("poll"), EdcbConfig.poll),
@@ -246,6 +248,8 @@ reserve = {priority_reserve}
 min_age = {priority_min_age}
 
 [edcb]
+# false にすると、EDCB の予約や空きチューナー数を確認せずに取得します。
+enabled = {edcb_enabled}
 # EpgTimerSrv の HTTP サーバ (EnableHttpSrv=1 / HttpPort)。
 url = {edcb_url}
 # 予約のこれだけ手前で取得をやめます。EDCB の NGEpgCapTime と同じ考え方です。
@@ -341,6 +345,7 @@ def values_from(config):
             "min_age": duration_text(config.priority.min_age),
         },
         "edcb": {
+            "enabled": config.edcb.enabled,
             "url": config.edcb.url,
             "guard": duration_text(config.edcb.guard),
             "poll": duration_text(config.edcb.poll),
@@ -427,6 +432,7 @@ def render(values):
         drivers=drivers,
         schedule=schedule,
         run_at_start=_bool(values["run_at_start"]),
+        edcb_enabled=_bool(edcb.get("enabled", True)),
         edcb_url=_string(edcb["url"]),
         edcb_guard=_string(edcb["guard"]),
         edcb_poll=_string(edcb["poll"]),

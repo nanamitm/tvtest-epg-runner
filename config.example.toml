@@ -40,6 +40,8 @@ times = ["04:30", "16:30"]
 run_at_start = false
 
 [edcb]
+# false にすると、EDCB の予約や空きチューナー数を確認せずに取得します。
+enabled = true
 # EpgTimerSrv の HTTP サーバ (EnableHttpSrv=1 / HttpPort)。
 url = "http://127.0.0.1:5510"
 # 予約のこれだけ手前で取得をやめます。EDCB の NGEpgCapTime と同じ考え方です。

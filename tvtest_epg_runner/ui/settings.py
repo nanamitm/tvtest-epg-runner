@@ -336,6 +336,11 @@ class SettingsDialog(QDialog):
         page = QWidget()
         form = QFormLayout(page)
 
+        self.edcb_enabled = QCheckBox("EDCB の空きチューナー数をチェックする")
+        form.addRow(self.edcb_enabled)
+        form.addRow("", QLabel(
+            "オフにすると、EDCB の予約を確認せずに設定どおりの本数・制限時間で取得します。"))
+
         self.edcb_url = QLineEdit()
         form.addRow("EpgTimerSrv", self.edcb_url)
         form.addRow("", QLabel("EpgTimerSrv.ini の EnableHttpSrv=1 と HttpPort が必要です。"))
@@ -357,6 +362,12 @@ class SettingsDialog(QDialog):
         test = QPushButton("接続を確認")
         test.clicked.connect(self._test_edcb)
         form.addRow("", test)
+
+        self._edcb_widgets = (
+            self.edcb_url, self.edcb_guard, self.edcb_poll, self.edcb_timeout,
+            self.edcb_start_margin, self.edcb_end_margin, self.edcb_required, test)
+        for widget in self._edcb_widgets:
+            self.edcb_enabled.toggled.connect(widget.setEnabled)
         return page
 
     def _test_edcb(self):
@@ -557,6 +568,9 @@ class SettingsDialog(QDialog):
         self.edcb_start_margin.setText(edcb["default_start_margin"])
         self.edcb_end_margin.setText(edcb["default_end_margin"])
         self.edcb_required.setChecked(edcb["required"])
+        self.edcb_enabled.setChecked(edcb["enabled"])
+        for widget in self._edcb_widgets:
+            widget.setEnabled(edcb["enabled"])
 
         server = values["server"]
         self.server_enabled.setChecked(server["enabled"])
@@ -598,6 +612,7 @@ class SettingsDialog(QDialog):
                 "min_age": self.priority_min_age.text().strip(),
             },
             "edcb": {
+                "enabled": self.edcb_enabled.isChecked(),
                 "url": self.edcb_url.text().strip(),
                 "guard": self.edcb_guard.text().strip(),
                 "poll": self.edcb_poll.text().strip(),

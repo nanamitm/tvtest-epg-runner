@@ -84,6 +84,16 @@ class SchedulerRegressionTest(unittest.TestCase):
         self.assertEqual(jobs, [])
         self.assertIsNotNone(skipped)
 
+    def test_disabled_edcb_check_never_queries(self):
+        self.config.priority.enabled = False
+        self.config.edcb.enabled = False
+        self.scheduler._reservations = Mock(side_effect=AssertionError('queried'))
+        jobs, skipped = self.scheduler._plan(
+            DriverConfig('D.dll', timeout=2400, instances=2))
+        self.assertIsNone(skipped)
+        self.assertEqual([job.timeout for job in jobs], [2400, 2400])
+        self.assertIsNone(self.scheduler._watchdog('D.dll', 2, 0))
+
     def test_edcb_stopped_only_judged_for_local_server(self):
         with patch('tvtest_epg_runner.edcb._process_names', return_value={'explorer.exe'}):
             self.assertTrue(EdcbClient('http://127.0.0.1:5510').is_stopped())

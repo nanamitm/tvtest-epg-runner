@@ -33,6 +33,9 @@ STATE_PREFIX = "capture-"
 
 # 並列で走るジョブが同じ問い合わせを繰り返さないよう、少しだけ持ち回る
 EDCB_CACHE_SECONDS = 10
+# 一時的に応答しないだけで取得を止めないよう、続けて何回か問い合わせる
+EDCB_ATTEMPTS = 3
+EDCB_RETRY_SECONDS = 2
 
 
 def next_run_after(config, moment):
@@ -477,18 +480,37 @@ class Scheduler:
         """The reservations, fetched at most once every few seconds.
 
         Several jobs poll while they run, and each answer is a few hundred
-        kilobytes of XML describing the same reservations.
+        kilobytes of XML describing the same reservations.  A failure is kept
+        just as long, so parallel jobs do not each retry it again.
         """
         with self._edcb_lock:
-            now = time.monotonic()
             if self._edcb_cache is not None:
                 stamp, value = self._edcb_cache
-                if now - stamp < EDCB_CACHE_SECONDS:
+                if time.monotonic() - stamp < EDCB_CACHE_SECONDS:
+                    if isinstance(value, EdcbUnavailable):
+                        raise value
                     return value
 
-            value = self.edcb.enum_tuner_reserve()
-            self._edcb_cache = (now, value)
+            try:
+                value = self._query_edcb()
+            except EdcbUnavailable as error:
+                self._edcb_cache = (time.monotonic(), error)
+                raise
+            self._edcb_cache = (time.monotonic(), value)
             return value
+
+    def _query_edcb(self):
+        for attempt in range(1, EDCB_ATTEMPTS + 1):
+            try:
+                return self.edcb.enum_tuner_reserve()
+            except EdcbUnavailable as error:
+                # 起動していないなら何度聞いても同じなので、すぐに諦める
+                if attempt == EDCB_ATTEMPTS or self.edcb.is_stopped():
+                    raise
+                logger.debug(
+                    "EDCB に問い合わせできません (%d/%d 回目): %s",
+                    attempt, EDCB_ATTEMPTS, error)
+                self._quit.wait(EDCB_RETRY_SECONDS)
 
     def free_window(self, driver, moment, needed=1):
         """Seconds this driver keeps ``needed`` tuners free, None if unknown."""
@@ -505,7 +527,9 @@ class Scheduler:
                 return None, None
             self._edcb_stopped = False
             if self.config.edcb.required:
-                logger.warning("EDCB に問い合わせできません: %s", error)
+                logger.warning(
+                    "EDCB に %d 回問い合わせましたが応答がありません: %s",
+                    EDCB_ATTEMPTS, error)
                 return 0, None
             logger.debug("EDCB に問い合わせできません: %s", error)
             return None, None

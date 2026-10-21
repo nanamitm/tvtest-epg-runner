@@ -84,6 +84,36 @@ class SchedulerRegressionTest(unittest.TestCase):
         self.assertEqual(jobs, [])
         self.assertIsNotNone(skipped)
 
+    def test_edcb_blip_is_retried_before_giving_up(self):
+        self.config.edcb.required = True
+        query = Mock(side_effect=[EdcbUnavailable('timeout'), EdcbUnavailable('timeout'),
+                                  ([], {'D.dll': 1})])
+        with (patch('tvtest_epg_runner.scheduler.EDCB_RETRY_SECONDS', 0),
+              patch.object(self.scheduler.edcb, 'enum_tuner_reserve', query),
+              patch.object(self.scheduler.edcb, 'is_stopped', return_value=False)):
+            window, _ = self.scheduler.free_window('D.dll', datetime.now())
+        self.assertGreater(window, 0)
+        self.assertEqual(query.call_count, 3)
+
+    def test_edcb_gives_up_after_three_attempts(self):
+        self.config.edcb.required = True
+        query = Mock(side_effect=EdcbUnavailable('timeout'))
+        with (patch('tvtest_epg_runner.scheduler.EDCB_RETRY_SECONDS', 0),
+              patch.object(self.scheduler.edcb, 'enum_tuner_reserve', query),
+              patch.object(self.scheduler.edcb, 'is_stopped', return_value=False),
+              self.assertLogs('tvtest_epg_runner.scheduler', 'WARNING')):
+            self.assertEqual(self.scheduler.free_window('D.dll', datetime.now()), (0, None))
+            # 並列のジョブはしばらく同じ答えを使い、問い合わせを繰り返さない
+            self.assertEqual(self.scheduler.free_window('D.dll', datetime.now()), (0, None))
+        self.assertEqual(query.call_count, 3)
+
+    def test_stopped_edcb_is_not_retried(self):
+        query = Mock(side_effect=EdcbUnavailable('refused'))
+        with (patch.object(self.scheduler.edcb, 'enum_tuner_reserve', query),
+              patch.object(self.scheduler.edcb, 'is_stopped', return_value=True)):
+            self.assertEqual(self.scheduler.free_window('D.dll', datetime.now()), (None, None))
+        self.assertEqual(query.call_count, 1)
+
     def test_disabled_edcb_check_never_queries(self):
         self.config.priority.enabled = False
         self.config.edcb.enabled = False

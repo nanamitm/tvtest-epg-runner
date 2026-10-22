@@ -31,6 +31,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
+      - name: Test
+        # テストが通らないコミットにタグを付けても配布しない
+        run: python -m unittest discover -s tests -v
+
       - name: Build
         run: pyinstaller --noconfirm --clean tvtest_epg_runner.spec
 
